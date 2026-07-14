@@ -7,6 +7,7 @@ import adminRoutes from './routes/admin.js'
 import courseRoutes from './routes/courses.js'
 import quizRoutes from './routes/quizzes.js'
 import resultRoutes from './routes/results.js'
+import profileRoutes from './routes/profile.js'
 import uploadRoutes from './routes/upload.js'
 import { initializeDatabase } from './config/db.js'
 
@@ -30,12 +31,14 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/courses', courseRoutes)
 app.use('/api/quiz', quizRoutes)
 app.use('/api/results', resultRoutes)
+app.use('/api/profile', profileRoutes)
 app.use('/api/upload', uploadRoutes)
 
 app.use((req, res) => res.status(404).json({ message: 'API route not found.' }))
 app.use((error, req, res, next) => {
   console.error(error)
   if (error instanceof multer.MulterError) return res.status(400).json({ message: error.message })
+  if (error.statusCode) return res.status(error.statusCode).json({ message: error.message })
   res.status(500).json({ message: 'The server could not complete the request.' })
 })
 

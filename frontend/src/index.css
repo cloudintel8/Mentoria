@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
 
-:root { font-family: 'DM Sans', sans-serif; color: #17213d; background: #f7f8fc; font-synthesis: none; text-rendering: optimizeLegibility; --ink: #17213d; --muted: #6c758c; --purple: #6255df; --purple-dark: #493dbf; --line: #e4e7ef; }
+:root { font-family: 'DM Sans', sans-serif; color: #17213d; background: #f7f8fc; font-synthesis: none; text-rendering: optimizeLegibility; --bg: #f6f7fb; --sidebar-bg: #ffffff; --surface: #ffffff; --surface-soft: #f5f6fb; --text: #17213d; --muted-text: #6c758c; --border: #e4e7ef; --primary: #6255df; --primary-dark: #493dbf; --success: #1c9a72; --danger: #a33b3b; --ink: var(--text); --muted: var(--muted-text); --purple: var(--primary); --purple-dark: var(--primary-dark); --line: var(--border); }
+[data-theme='dark'] { color: #f4f6ff; background: #0b1020; --bg: #0b1020; --sidebar-bg: #080d1a; --surface: #141a2d; --surface-soft: #1b2338; --text: #f4f6ff; --muted-text: #b8c0d4; --border: #2b3552; --primary: #9288ff; --primary-dark: #7a6df0; --success: #62d6a8; --danger: #ff8b8b; --ink: var(--text); --muted: var(--muted-text); --purple: var(--primary); --purple-dark: var(--primary-dark); --line: var(--border); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
@@ -8,4 +9,3 @@ button, input, textarea, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
 #root { min-height: 100vh; }
-

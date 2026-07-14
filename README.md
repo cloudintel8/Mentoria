@@ -101,6 +101,12 @@ Base URL: `http://localhost:5000/api`
 | POST | `/quiz/submit` | Student | Score and save quiz answers |
 | GET | `/results/:studentId` | Owner/Admin/Lecturer | Get one student's results |
 | GET | `/admin/results` | Admin/Lecturer | Get all student quiz results |
+| GET | `/admin/students` | Admin/Lecturer | Get student activity summaries |
+| GET | `/admin/stats` | Admin/Lecturer | Get admin dashboard statistics |
+| GET | `/profile/:userId` | Owner/Admin/Lecturer | Get one user profile summary |
+| PUT | `/profile/:userId` | Owner/Admin/Lecturer | Update profile name and email |
+| PUT | `/profile/:userId/password` | Owner | Change password |
+| POST | `/profile/:userId/avatar` | Owner/Admin/Lecturer | Upload or fallback profile picture |
 | POST | `/upload` | Authenticated | Upload one file to S3 |
 
 Send protected requests with `Authorization: Bearer <token>`.
@@ -116,9 +122,13 @@ Send protected requests with `Authorization: Bearer <token>`.
   "code": "AWS 302",
   "instructor": "Lecturer Name",
   "duration": "6 weeks",
-  "level": "Intermediate"
+  "level": "Intermediate",
+  "category": "Serverless",
+  "coverImageUrl": "https://example.com/cover.png"
 }
 ```
+
+Course create/edit also accepts `multipart/form-data` with an optional `coverImage` file. Cover images are uploaded to `courses/covers/` in S3 when credentials are available, with a safe demo fallback when they are not.
 
 ### Quiz submission body
 

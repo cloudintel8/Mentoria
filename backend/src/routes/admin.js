@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listAllResults } from '../config/db.js'
+import { getAdminStats, listAllResults, listStudents } from '../config/db.js'
 import { authenticate, allowRoles } from '../middleware/auth.js'
 
 const router = Router()
@@ -13,6 +13,14 @@ function mapResult(row) {
 
 router.get('/results', authenticate, allowRoles('admin', 'lecturer'), async (req, res) => {
   res.json((await listAllResults()).map(mapResult))
+})
+
+router.get('/students', authenticate, allowRoles('admin', 'lecturer'), async (req, res) => {
+  res.json(await listStudents())
+})
+
+router.get('/stats', authenticate, allowRoles('admin', 'lecturer'), async (req, res) => {
+  res.json(await getAdminStats())
 })
 
 export default router

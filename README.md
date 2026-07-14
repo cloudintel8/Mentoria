@@ -95,6 +95,8 @@ Base URL: `http://localhost:5000/api`
 | POST | `/auth/login` | Public | Log in and receive a JWT |
 | GET | `/courses` | Public | List all courses |
 | POST | `/courses` | Admin/Lecturer | Publish a course |
+| PUT | `/courses/:courseId` | Admin/Lecturer | Update a course |
+| DELETE | `/courses/:courseId` | Admin/Lecturer | Delete a course |
 | GET | `/quiz/:courseId` | Public | Get quiz questions without answers |
 | POST | `/quiz/submit` | Student | Score and save quiz answers |
 | GET | `/results/:studentId` | Owner/Admin/Lecturer | Get one student's results |

@@ -10,7 +10,7 @@ import resultRoutes from './routes/results.js'
 import uploadRoutes from './routes/upload.js'
 import { initializeDatabase } from './config/db.js'
 
-const requiredEnv = ['JWT_SECRET', 'AWS_REGION', 'AWS_S3_BUCKET', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
+const requiredEnv = ['JWT_SECRET']
 const missingEnv = requiredEnv.filter((name) => !process.env[name])
 if (missingEnv.length) {
   console.error(`Missing required environment variables: ${missingEnv.join(', ')}`)

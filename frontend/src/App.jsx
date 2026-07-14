@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import api from './api'
 import './App.css'
@@ -76,15 +76,19 @@ function AppShell({ children, admin = false }) {
   const { auth, signOut } = useContext(AuthContext)
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const nav = admin ? [{ to: '/admin', label: 'Overview', icon: 'dashboard' }, { to: '/admin/courses', label: 'Manage courses', icon: 'courses' }, { to: '/admin/upload', label: 'S3 uploads', icon: 'upload' }] : [{ to: '/dashboard', label: 'Overview', icon: 'dashboard' }, { to: '/courses', label: 'My courses', icon: 'courses' }, { to: '/results', label: 'Quiz results', icon: 'result' }]
+  const nav = admin ? [{ to: '/admin', label: 'Overview', icon: 'dashboard' }, { to: '/admin/courses', label: 'Manage courses', icon: 'courses' }, { to: '/admin/results', label: 'Student results', icon: 'result' }, { to: '/admin/upload', label: 'S3 uploads', icon: 'upload' }] : [{ to: '/dashboard', label: 'Overview', icon: 'dashboard' }, { to: '/courses', label: 'My courses', icon: 'courses' }, { to: '/results', label: 'Quiz results', icon: 'result' }]
   return <div className="app-shell"><aside className={open ? 'sidebar open' : 'sidebar'}><div className="side-head"><Logo /><button className="icon-button mobile-only" onClick={() => setOpen(false)}>×</button></div><span className="side-label">{admin ? 'ADMIN WORKSPACE' : 'LEARNING SPACE'}</span><nav>{nav.map((item) => <NavLink key={item.to} to={item.to} end onClick={() => setOpen(false)}><Icon name={item.icon} /><span>{item.label}</span></NavLink>)}</nav><div className="side-bottom"><div className="user-chip"><span>{auth.user.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span><div><strong>{auth.user.name}</strong><small>{auth.user.role}</small></div></div><button onClick={() => { signOut(); navigate('/') }}><Icon name="logout" /> Sign out</button></div></aside><section className="app-main"><header className="app-top"><button className="icon-button mobile-only" onClick={() => setOpen(true)}><Icon name="menu" /></button><div><span className="eyebrow">CLOUDLEARN</span></div><div className="top-status"><span className="online-dot" /> AWS Singapore</div></header><div className="page-content">{children}</div></section></div>
 }
 
 function useCourses() {
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
-  useEffect(() => { api.get('/courses').then(({ data }) => setCourses(data)).finally(() => setLoading(false)) }, [])
-  return { courses, loading }
+  const refresh = useCallback(() => {
+    setLoading(true)
+    return api.get('/courses').then(({ data }) => setCourses(data)).finally(() => setLoading(false))
+  }, [])
+  useEffect(() => { refresh() }, [refresh])
+  return { courses, loading, refresh }
 }
 
 function Dashboard() {
@@ -129,9 +133,15 @@ function QuizResult() {
 }
 
 function Results() {
-  const { auth } = useContext(AuthContext); const [items, setItems] = useState([])
-  useEffect(() => { api.get(`/results/${auth.user.id}`).then(({ data }) => setItems(data)) }, [auth.user.id])
-  return <AppShell><div className="page-heading compact"><div><span className="eyebrow">YOUR PERFORMANCE</span><h1>Quiz results.</h1><p>A record of your completed knowledge checks.</p></div></div>{items.length ? <div className="result-list">{items.map((item) => <article key={item.id}><div className={item.percentage >= 60 ? 'result-percent pass' : 'result-percent'}>{item.percentage}%</div><div><span className="eyebrow">{item.courseId}</span><h3>{item.quizTitle}</h3><p>{new Date(item.submittedAt).toLocaleString()}</p></div><strong>{item.score} / {item.total}</strong></article>)}</div> : <Empty title="No quiz results yet" text="Complete a course quiz and your score will appear here." action="Browse courses" to="/courses" />}</AppShell>
+  const { auth } = useContext(AuthContext); const [items, setItems] = useState([]); const [loading, setLoading] = useState(true)
+  useEffect(() => { api.get(`/results/${auth.user.id}`).then(({ data }) => setItems(data)).finally(() => setLoading(false)) }, [auth.user.id])
+  return <AppShell><div className="page-heading compact"><div><span className="eyebrow">YOUR PERFORMANCE</span><h1>Quiz results.</h1><p>A record of your completed knowledge checks.</p></div></div>{loading ? <div className="loading">Loading results...</div> : items.length ? <div className="result-list">{items.map((item) => <article key={item.id}><div className={item.percentage >= 60 ? 'result-percent pass' : 'result-percent'}>{item.percentage}%</div><div><span className="eyebrow">{item.courseTitle || item.courseId}</span><h3>{item.quizTitle}</h3><p>{new Date(item.submittedAt).toLocaleString()}</p></div><strong>{item.score} / {item.total}</strong></article>)}</div> : <Empty title="No quiz results yet" text="Complete a course quiz and your score will appear here." action="Browse courses" to="/courses" />}</AppShell>
+}
+
+function AdminResults() {
+  const [items, setItems] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('')
+  useEffect(() => { api.get('/admin/results').then(({ data }) => setItems(data)).catch((err) => setError(err.response?.data?.message || 'Could not load student results.')).finally(() => setLoading(false)) }, [])
+  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">ASSESSMENT RESULTS</span><h1>Student results.</h1><p>Review submitted quiz scores across all cloud courses.</p></div></div>{error && <div className="alert error">{error}</div>}{loading ? <div className="loading">Loading student results...</div> : items.length ? <div className="admin-results-table"><div className="admin-results-head"><span>Student</span><span>Course</span><span>Score</span><span>Percentage</span><span>Submitted</span></div>{items.map((item) => <article key={item.id}><div><strong>{item.studentName}</strong><small>{item.studentId}</small></div><div><strong>{item.courseTitle || item.courseId}</strong><small>{item.quizTitle}</small></div><span>{item.score} / {item.total}</span><span className={item.percentage >= 60 ? 'success-text' : ''}>{item.percentage}%</span><time>{new Date(item.submittedAt).toLocaleString()}</time></article>)}</div> : <Empty title="No submissions yet" text="Student quiz submissions will appear here after a quiz is completed." />}</AppShell>
 }
 
 function AdminDashboard() {
@@ -139,11 +149,60 @@ function AdminDashboard() {
   return <AppShell admin><div className="page-heading"><div><span className="eyebrow">ADMIN OVERVIEW</span><h1>Learning operations.</h1><p>Manage course content and cloud-hosted resources.</p></div><Link className="button primary" to="/admin/courses"><Icon name="plus" /> Add a course</Link></div><div className="stats-row"><div><span className="stat-icon purple"><Icon name="courses" /></span><p>Published courses<strong>{courses.length}</strong></p></div><div><span className="stat-icon orange"><Icon name="upload" /></span><p>Storage region<strong className="small-stat">Singapore</strong></p></div><div><span className="stat-icon green"><Icon name="dashboard" /></span><p>Platform status<strong className="small-stat success-text">Operational</strong></p></div></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">RECENT CONTENT</span><h2>Published courses</h2></div></div><div className="admin-course-list">{courses.map((course) => <div key={course.id}><span style={{ background: course.color }}>{course.code}</span><div><strong>{course.title}</strong><small>{course.instructor} · {course.level}</small></div><Link to={`/courses/${course.id}`}>View →</Link></div>)}</div></section></AppShell>
 }
 
-function AdminCourses() {
+function AdminCourseManager() {
   const emptyForm = { title: '', description: '', materialLink: '', videoLink: '', code: '', instructor: '', duration: '', level: 'Beginner' }
-  const [form, setForm] = useState(emptyForm); const [message, setMessage] = useState(''); const { courses } = useCourses()
-  const submit = async (event) => { event.preventDefault(); setMessage(''); try { await api.post('/courses', form); setForm(emptyForm); setMessage('Course published successfully. Refreshing…'); setTimeout(() => window.location.reload(), 700) } catch (err) { setMessage(err.response?.data?.message || 'Could not add course.') } }
-  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">CONTENT MANAGEMENT</span><h1>Add a new course.</h1><p>Publish a course and connect its cloud-hosted resources.</p></div></div><div className="admin-form-layout"><form className="panel-form" onSubmit={submit}>{message && <div className="alert">{message}</div>}<div className="field-row"><label>Course title<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required placeholder="e.g. Serverless on AWS" /></label><label>Course code<input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. AWS 302" /></label></div><label>Description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required rows="4" placeholder="What will students learn?" /></label><div className="field-row"><label>Material link<input type="url" value={form.materialLink} onChange={(e) => setForm({ ...form, materialLink: e.target.value })} placeholder="https://…" /></label><label>Video link<input type="url" value={form.videoLink} onChange={(e) => setForm({ ...form, videoLink: e.target.value })} placeholder="https://…" /></label></div><div className="field-row three"><label>Instructor<input value={form.instructor} onChange={(e) => setForm({ ...form, instructor: e.target.value })} placeholder="Lecturer name" /></label><label>Duration<input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="8 weeks" /></label><label>Level<select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label></div><button className="button primary">Publish course <Icon name="arrow" /></button></form><aside className="form-aside"><span className="eyebrow">PUBLISHED</span><strong>{courses.length}</strong><p>courses currently available to students.</p><Link to="/admin/upload">Upload files to S3 →</Link></aside></div></AppShell>
+  const [form, setForm] = useState(emptyForm)
+  const [message, setMessage] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const { courses, loading, refresh } = useCourses()
+
+  const resetForm = () => { setForm(emptyForm); setEditingId(null); setMessage('') }
+  const editCourse = (course) => {
+    setEditingId(course.id)
+    setMessage('')
+    setForm({
+      title: course.title || '',
+      description: course.description || '',
+      materialLink: course.materialLink || '',
+      videoLink: course.videoLink || '',
+      code: course.code || '',
+      instructor: course.instructor || '',
+      duration: course.duration || '',
+      level: course.level || 'Beginner',
+    })
+  }
+  const submit = async (event) => {
+    event.preventDefault()
+    setMessage('')
+    setSaving(true)
+    try {
+      if (editingId) await api.put(`/courses/${editingId}`, form)
+      else await api.post('/courses', form)
+      await refresh()
+      setForm(emptyForm)
+      setEditingId(null)
+      setMessage(editingId ? 'Course updated successfully.' : 'Course published successfully.')
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Could not save course.')
+    } finally {
+      setSaving(false)
+    }
+  }
+  const removeCourse = async (course) => {
+    if (!window.confirm(`Delete "${course.title}"? This will remove its quiz and related demo results.`)) return
+    setMessage('')
+    try {
+      await api.delete(`/courses/${course.id}`)
+      if (editingId === course.id) resetForm()
+      await refresh()
+      setMessage('Course deleted successfully.')
+    } catch (err) {
+      setMessage(err.response?.data?.message || 'Could not delete course.')
+    }
+  }
+
+  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">CONTENT MANAGEMENT</span><h1>{editingId ? 'Edit course.' : 'Manage courses.'}</h1><p>Publish, update, and remove cloud learning paths from the backend API.</p></div></div><div className="admin-form-layout"><form className="panel-form" onSubmit={submit}>{message && <div className="alert">{message}</div>}<div className="field-row"><label>Course title<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required placeholder="e.g. Serverless on AWS" /></label><label>Course code<input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. AWS 302" /></label></div><label>Description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required rows="4" placeholder="What will students learn?" /></label><div className="field-row"><label>Material link<input type="url" value={form.materialLink} onChange={(e) => setForm({ ...form, materialLink: e.target.value })} placeholder="https://..." /></label><label>Video link<input type="url" value={form.videoLink} onChange={(e) => setForm({ ...form, videoLink: e.target.value })} placeholder="https://..." /></label></div><div className="field-row three"><label>Instructor<input value={form.instructor} onChange={(e) => setForm({ ...form, instructor: e.target.value })} placeholder="Lecturer name" /></label><label>Duration<input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="8 weeks" /></label><label>Level<select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label></div><div className="form-actions"><button className="button primary" disabled={saving}>{saving ? 'Saving...' : editingId ? 'Update course' : 'Publish course'} <Icon name="arrow" /></button>{editingId && <button className="button ghost" type="button" onClick={resetForm}>Cancel edit</button>}</div></form><aside className="form-aside"><span className="eyebrow">PUBLISHED</span><strong>{courses.length}</strong><p>courses currently available to students.</p><Link to="/admin/upload">Upload files to S3 -&gt;</Link></aside></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">COURSE LIBRARY</span><h2>Published courses</h2></div></div>{loading ? <div className="loading">Loading courses...</div> : <div className="admin-manage-list">{courses.map((course) => <article key={course.id}><span style={{ background: course.color }}>{course.code}</span><div><strong>{course.title}</strong><small>{course.instructor} - {course.level} - {course.duration}</small><p>{course.description}</p></div><div className="course-actions"><Link className="text-button" to={`/courses/${course.id}`}>View</Link><button type="button" onClick={() => editCourse(course)}>Edit</button><button className="danger-button" type="button" onClick={() => removeCourse(course)}>Delete</button></div></article>)}</div>}</section></AppShell>
 }
 
 function AdminUpload() {
@@ -155,7 +214,7 @@ function AdminUpload() {
 function Empty({ title, text, action, to }) { return <div className="empty"><span>☁</span><h2>{title}</h2><p>{text}</p>{action && <Link className="button primary" to={to}>{action}</Link>}</div> }
 
 function AppRoutes() {
-  return <Routes><Route path="/" element={<Landing />} /><Route path="/login" element={<AuthPage />} /><Route path="/register" element={<AuthPage register />} /><Route path="/dashboard" element={<Protected roles={['student']}><Dashboard /></Protected>} /><Route path="/courses" element={<Protected><Courses /></Protected>} /><Route path="/courses/:id" element={<Protected><CourseDetail /></Protected>} /><Route path="/quiz/result" element={<Protected roles={['student']}><QuizResult /></Protected>} /><Route path="/quiz/:courseId" element={<Protected roles={['student']}><Quiz /></Protected>} /><Route path="/results" element={<Protected roles={['student']}><Results /></Protected>} /><Route path="/admin" element={<Protected roles={['admin', 'lecturer']}><AdminDashboard /></Protected>} /><Route path="/admin/courses" element={<Protected roles={['admin', 'lecturer']}><AdminCourses /></Protected>} /><Route path="/admin/upload" element={<Protected roles={['admin', 'lecturer']}><AdminUpload /></Protected>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes>
+  return <Routes><Route path="/" element={<Landing />} /><Route path="/login" element={<AuthPage />} /><Route path="/register" element={<AuthPage register />} /><Route path="/dashboard" element={<Protected roles={['student']}><Dashboard /></Protected>} /><Route path="/courses" element={<Protected><Courses /></Protected>} /><Route path="/courses/:id" element={<Protected><CourseDetail /></Protected>} /><Route path="/quiz/result" element={<Protected roles={['student']}><QuizResult /></Protected>} /><Route path="/quiz/:courseId" element={<Protected roles={['student']}><Quiz /></Protected>} /><Route path="/results" element={<Protected roles={['student']}><Results /></Protected>} /><Route path="/admin" element={<Protected roles={['admin', 'lecturer']}><AdminDashboard /></Protected>} /><Route path="/admin/courses" element={<Protected roles={['admin', 'lecturer']}><AdminCourseManager /></Protected>} /><Route path="/admin/results" element={<Protected roles={['admin', 'lecturer']}><AdminResults /></Protected>} /><Route path="/admin/upload" element={<Protected roles={['admin', 'lecturer']}><AdminUpload /></Protected>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes>
 }
 
 export default function App() { return <BrowserRouter><AuthProvider><AppRoutes /></AuthProvider></BrowserRouter> }

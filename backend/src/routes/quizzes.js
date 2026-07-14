@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
-import { pool } from '../config/db.js'
+import { findQuiz, saveResult } from '../config/db.js'
 import { authenticate, allowRoles } from '../middleware/auth.js'
 
 const router = Router()
@@ -11,11 +11,7 @@ function parseQuestions(value) {
 }
 
 router.get('/:courseId', async (req, res) => {
-  const [rows] = await pool.execute(
-    'SELECT id, course_id AS courseId, title, questions FROM quizzes WHERE course_id = ? LIMIT 1',
-    [req.params.courseId],
-  )
-  const quiz = rows[0]
+  const quiz = await findQuiz(req.params.courseId)
   if (!quiz) return res.status(404).json({ message: 'No quiz is available for this course.' })
 
   const questions = parseQuestions(quiz.questions)
@@ -29,11 +25,7 @@ router.get('/:courseId', async (req, res) => {
 
 router.post('/submit', authenticate, allowRoles('student'), async (req, res) => {
   const { courseId, answers } = req.body
-  const [rows] = await pool.execute(
-    'SELECT id, course_id AS courseId, title, questions FROM quizzes WHERE course_id = ? LIMIT 1',
-    [courseId],
-  )
-  const quiz = rows[0]
+  const quiz = await findQuiz(courseId)
   if (!quiz) return res.status(404).json({ message: 'Quiz not found.' })
   if (!answers || typeof answers !== 'object') return res.status(400).json({ message: 'Answers are required.' })
 
@@ -54,22 +46,7 @@ router.post('/submit', authenticate, allowRoles('student'), async (req, res) => 
     submittedAt: new Date().toISOString(),
   }
 
-  await pool.execute(
-    `INSERT INTO results
-      (id, student_id, student_name, course_id, quiz_title, score, total, percentage, answers)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      result.id,
-      result.studentId,
-      result.studentName,
-      result.courseId,
-      result.quizTitle,
-      result.score,
-      result.total,
-      result.percentage,
-      JSON.stringify(answers),
-    ],
-  )
+  await saveResult(result, answers)
 
   res.status(201).json(result)
 })

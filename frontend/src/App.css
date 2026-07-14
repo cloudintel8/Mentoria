@@ -285,3 +285,27 @@ body { color: var(--text); background: var(--bg); }
   .public-detail-hero { min-height: 360px; }
   .detail-actions { align-items: stretch; flex-direction: column; }
 }
+
+/* Admin quiz management */
+.quiz-admin-layout { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 20px; align-items: start; }
+.quiz-form h3 { margin-bottom: 10px; }
+.question-count { border-radius: 999px; padding: 8px 12px; color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .8px; }
+.quiz-question-list { display: grid; gap: 14px; }
+.quiz-question-list article { display: grid; grid-template-columns: 58px 1fr auto; gap: 18px; align-items: start; padding: 22px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); }
+.question-number { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; color: white; background: var(--primary); font: 800 13px 'Manrope'; }
+.quiz-question-list h3 { margin: 2px 0 14px; font-size: 15px; line-height: 1.5; }
+.quiz-question-list ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.quiz-question-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted-text); background: var(--surface-soft); font-size: 12px; }
+.quiz-question-list li span { display: grid; place-items: center; flex: 0 0 26px; height: 26px; border-radius: 7px; color: var(--text); background: var(--surface); font-size: 10px; font-weight: 900; }
+.quiz-question-list li.correct { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); }
+.quiz-question-list li.correct span { color: white; background: var(--success); }
+.quiz-question-list p { margin: 12px 0 0; color: var(--muted-text); font-size: 11px; line-height: 1.6; }
+
+@media (max-width: 1000px) {
+  .quiz-admin-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .quiz-question-list article { grid-template-columns: 1fr; }
+  .quiz-question-list .course-actions { justify-content: flex-start; }
+}

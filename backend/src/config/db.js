@@ -62,7 +62,7 @@ export const initializeDataStore = initializeDatabase
 async function createTables() {
   await pool.query(`CREATE TABLE IF NOT EXISTS users (id VARCHAR(64) PRIMARY KEY, name VARCHAR(120) NOT NULL, email VARCHAR(190) NOT NULL UNIQUE, password VARCHAR(255) NOT NULL, role VARCHAR(20) NOT NULL DEFAULT 'student', profile_image_url TEXT, joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS courses (id VARCHAR(64) PRIMARY KEY, title VARCHAR(255) NOT NULL, code VARCHAR(50) NOT NULL, description TEXT NOT NULL, instructor VARCHAR(120) NOT NULL, duration VARCHAR(80) NOT NULL, level VARCHAR(80) NOT NULL, category VARCHAR(120) NOT NULL DEFAULT 'Cloud', progress INT NOT NULL DEFAULT 0, color VARCHAR(20) NOT NULL DEFAULT '#2e8b57', material_link TEXT, video_link TEXT, cover_image_url TEXT, created_by VARCHAR(64), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
-  await pool.query(`CREATE TABLE IF NOT EXISTS quizzes (id VARCHAR(64) PRIMARY KEY, course_id VARCHAR(64) NOT NULL UNIQUE, title VARCHAR(255) NOT NULL, questions LONGTEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
+  await pool.query(`CREATE TABLE IF NOT EXISTS quizzes (id VARCHAR(64) PRIMARY KEY, course_id VARCHAR(64) NOT NULL, title VARCHAR(255), question TEXT NOT NULL, option_a TEXT NOT NULL, option_b TEXT NOT NULL, option_c TEXT NOT NULL, option_d TEXT NOT NULL, correct_answer INT NOT NULL, explanation TEXT, questions LONGTEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS results (id VARCHAR(64) PRIMARY KEY, student_id VARCHAR(64) NOT NULL, student_name VARCHAR(120) NOT NULL, course_id VARCHAR(64) NOT NULL, quiz_title VARCHAR(255) NOT NULL, score INT NOT NULL, total INT NOT NULL, percentage INT NOT NULL, answers LONGTEXT, submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
 }
 
@@ -72,10 +72,22 @@ async function ensureOptionalColumns() {
     'ALTER TABLE users ADD COLUMN joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
     "ALTER TABLE courses ADD COLUMN category VARCHAR(120) NOT NULL DEFAULT 'Cloud'",
     'ALTER TABLE courses ADD COLUMN cover_image_url TEXT',
+    'ALTER TABLE quizzes ADD COLUMN question TEXT',
+    'ALTER TABLE quizzes ADD COLUMN option_a TEXT',
+    'ALTER TABLE quizzes ADD COLUMN option_b TEXT',
+    'ALTER TABLE quizzes ADD COLUMN option_c TEXT',
+    'ALTER TABLE quizzes ADD COLUMN option_d TEXT',
+    'ALTER TABLE quizzes ADD COLUMN correct_answer INT',
+    'ALTER TABLE quizzes ADD COLUMN explanation TEXT',
+    'ALTER TABLE quizzes ADD COLUMN title VARCHAR(255)',
+    'ALTER TABLE quizzes ADD COLUMN questions LONGTEXT',
+    'ALTER TABLE quizzes MODIFY title VARCHAR(255) NULL',
+    'ALTER TABLE quizzes MODIFY questions LONGTEXT NULL',
+    'ALTER TABLE quizzes DROP INDEX course_id',
   ]
   for (const statement of statements) {
     await pool.query(statement).catch((error) => {
-      if (error.code !== 'ER_DUP_FIELDNAME') throw error
+      if (!['ER_DUP_FIELDNAME', 'ER_BAD_FIELD_ERROR', 'ER_CANT_DROP_FIELD_OR_KEY'].includes(error.code)) throw error
     })
   }
 }
@@ -98,7 +110,10 @@ async function seedDemoData() {
   const [[q]] = await pool.query('SELECT COUNT(*) AS total FROM quizzes')
   if (!q.total) {
     for (const x of data.quizzes) {
-      await pool.execute('INSERT INTO quizzes (id,course_id,title,questions) VALUES (?,?,?,?)', [x.id, x.courseId, x.title, JSON.stringify(x.questions)])
+      for (const question of x.questions) {
+        const normalized = normalizeQuestion(question)
+        await pool.execute('INSERT INTO quizzes (id,course_id,question,option_a,option_b,option_c,option_d,correct_answer,explanation) VALUES (?,?,?,?,?,?,?,?,?)', [normalized.id, x.courseId, normalized.text, normalized.options[0], normalized.options[1], normalized.options[2], normalized.options[3], normalized.correctAnswer, normalized.explanation || ''])
+      }
     }
   }
 
@@ -155,10 +170,30 @@ function publicResult(result) {
   }
 }
 
+function normalizeCorrectAnswer(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toUpperCase()
+    if (['A', 'B', 'C', 'D'].includes(trimmed)) return trimmed.charCodeAt(0) - 65
+  }
+  const number = Number(value)
+  return Number.isInteger(number) && number >= 0 && number <= 3 ? number : 0
+}
+
+function normalizeQuestion(question) {
+  const options = question.options || [question.optionA ?? question.option_a, question.optionB ?? question.option_b, question.optionC ?? question.option_c, question.optionD ?? question.option_d]
+  return {
+    id: question.id,
+    text: question.text ?? question.question ?? '',
+    options: options.map((option) => option ?? ''),
+    correctAnswer: normalizeCorrectAnswer(question.correctAnswer ?? question.correct_answer),
+    explanation: question.explanation || '',
+  }
+}
+
 function withCourseProgress(courses, results, quizzes) {
   return courses.map((course) => {
     const courseResults = results.filter((result) => result.courseId === course.id)
-    const totalQuizzes = quizzes.some((quiz) => quiz.courseId === course.id) ? 1 : 0
+    const totalQuizzes = quizzes.some((quiz) => quiz.courseId === course.id && (!quiz.questions || quiz.questions.length)) ? 1 : 0
     const completedQuizzes = courseResults.length ? 1 : 0
     const progress = totalQuizzes && completedQuizzes ? 100 : Number(course.progress || 0)
     return {
@@ -207,7 +242,7 @@ async function dbResults(studentId) {
 }
 
 async function dbQuizCourseIds() {
-  const [rows] = await pool.query('SELECT course_id AS courseId FROM quizzes')
+  const [rows] = await pool.query('SELECT DISTINCT course_id AS courseId FROM quizzes')
   return rows
 }
 
@@ -290,11 +325,58 @@ export async function deleteCourse(courseId) {
 
 export async function findQuiz(courseId) {
   if (databaseEnabled) {
-    const [rows] = await pool.execute('SELECT id,course_id AS courseId,title,questions FROM quizzes WHERE course_id = ? LIMIT 1', [courseId])
-    if (!rows[0]) return null
-    return { ...rows[0], questions: typeof rows[0].questions === 'string' ? JSON.parse(rows[0].questions) : rows[0].questions }
+    const [rows] = await pool.execute('SELECT id,course_id AS courseId,title,questions,question,option_a AS optionA,option_b AS optionB,option_c AS optionC,option_d AS optionD,correct_answer AS correctAnswer,explanation FROM quizzes WHERE course_id = ? ORDER BY created_at ASC', [courseId])
+    const courses = await dbCourses()
+    const course = courses.find((item) => item.id === courseId)
+    const legacyQuestions = rows.flatMap((row) => row.questions ? JSON.parse(row.questions).map(normalizeQuestion) : [])
+    const normalizedQuestions = rows.filter((row) => row.question).map(normalizeQuestion)
+    return { id: `quiz-${courseId}`, courseId, title: rows.find((row) => row.title)?.title || (course ? `${course.title} Quiz` : 'Course Quiz'), questions: normalizedQuestions.length ? normalizedQuestions : legacyQuestions }
   }
-  return data.quizzes.find((q) => q.courseId === courseId)
+  const quiz = data.quizzes.find((q) => q.courseId === courseId)
+  if (!quiz) return { id: `quiz-${courseId}`, courseId, title: 'Course Quiz', questions: [] }
+  return { ...quiz, questions: quiz.questions.map(normalizeQuestion) }
+}
+
+export async function createQuizQuestion(courseId, question) {
+  const nextQuestion = normalizeQuestion(question)
+  if (databaseEnabled) {
+    await pool.execute('INSERT INTO quizzes (id,course_id,question,option_a,option_b,option_c,option_d,correct_answer,explanation) VALUES (?,?,?,?,?,?,?,?,?)', [nextQuestion.id, courseId, nextQuestion.text, nextQuestion.options[0], nextQuestion.options[1], nextQuestion.options[2], nextQuestion.options[3], nextQuestion.correctAnswer, nextQuestion.explanation || ''])
+    return nextQuestion
+  }
+  let quiz = data.quizzes.find((item) => item.courseId === courseId)
+  if (!quiz) {
+    const course = data.courses.find((item) => item.id === courseId)
+    quiz = { id: `quiz-${courseId}`, courseId, title: course ? `${course.title} Quiz` : 'Course Quiz', questions: [] }
+    data.quizzes.push(quiz)
+  }
+  quiz.questions.push(nextQuestion)
+  return nextQuestion
+}
+
+export async function updateQuizQuestion(courseId, questionId, question) {
+  const nextQuestion = normalizeQuestion({ ...question, id: questionId })
+  if (databaseEnabled) {
+    const [result] = await pool.execute('UPDATE quizzes SET question=?,option_a=?,option_b=?,option_c=?,option_d=?,correct_answer=?,explanation=? WHERE course_id=? AND id=?', [nextQuestion.text, nextQuestion.options[0], nextQuestion.options[1], nextQuestion.options[2], nextQuestion.options[3], nextQuestion.correctAnswer, nextQuestion.explanation || '', courseId, questionId])
+    return result.affectedRows ? nextQuestion : null
+  }
+  const quiz = data.quizzes.find((item) => item.courseId === courseId)
+  if (!quiz) return null
+  const index = quiz.questions.findIndex((item) => item.id === questionId)
+  if (index === -1) return null
+  quiz.questions[index] = nextQuestion
+  return nextQuestion
+}
+
+export async function deleteQuizQuestion(courseId, questionId) {
+  if (databaseEnabled) {
+    const [result] = await pool.execute('DELETE FROM quizzes WHERE course_id=? AND id=?', [courseId, questionId])
+    return result.affectedRows > 0
+  }
+  const quiz = data.quizzes.find((item) => item.courseId === courseId)
+  if (!quiz) return false
+  const before = quiz.questions.length
+  quiz.questions = quiz.questions.filter((item) => item.id !== questionId)
+  return quiz.questions.length !== before
 }
 
 export async function saveResult(result, answers) {

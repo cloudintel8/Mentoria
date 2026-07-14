@@ -176,7 +176,7 @@ function AppShell({ children, admin = false }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const nav = admin
-    ? [{ to: '/admin', label: 'Overview', icon: 'dashboard' }, { to: '/admin/courses', label: 'Manage courses', icon: 'courses' }, { to: '/admin/students', label: 'Manage students', icon: 'students' }, { to: '/admin/results', label: 'Student results', icon: 'result' }, { to: '/admin/upload', label: 'S3 uploads', icon: 'upload' }]
+    ? [{ to: '/admin', label: 'Overview', icon: 'dashboard' }, { to: '/admin/courses', label: 'Manage courses', icon: 'courses' }, { to: '/admin/quizzes', label: 'Manage quizzes', icon: 'quiz' }, { to: '/admin/students', label: 'Manage students', icon: 'students' }, { to: '/admin/results', label: 'Student results', icon: 'result' }, { to: '/admin/upload', label: 'S3 uploads', icon: 'upload' }]
     : [{ to: '/dashboard', label: 'Overview', icon: 'dashboard' }, { to: '/courses', label: 'My courses', icon: 'courses' }, { to: '/results', label: 'Quiz results', icon: 'result' }, { to: '/profile', label: 'My profile', icon: 'profile' }]
   return <div className="app-shell"><aside className={open ? 'sidebar open' : 'sidebar'}><div className="side-head"><Logo /><button className="icon-button mobile-only" onClick={() => setOpen(false)}>X</button></div><span className="side-label">{admin ? 'ADMIN WORKSPACE' : 'LEARNING SPACE'}</span><nav>{nav.map((item) => <NavLink key={item.to} to={item.to} end onClick={() => setOpen(false)}><Icon name={item.icon} /><span>{item.label}</span></NavLink>)}</nav><div className="side-bottom"><div className="user-chip"><span>{auth.user.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span><div><strong>{auth.user.name}</strong><small>{auth.user.role}</small></div></div><button onClick={() => { signOut(); navigate('/') }}><Icon name="logout" /> Sign out</button></div></aside><section className="app-main"><header className="app-top"><button className="icon-button mobile-only" onClick={() => setOpen(true)}><Icon name="menu" /></button><div><span className="eyebrow">CLOUDLEARN</span></div><div className="top-actions"><ThemeToggle /><div className="top-status"><span className="online-dot" /> AWS ready</div></div></header><div className="page-content">{children}</div></section></div>
 }
@@ -315,6 +315,7 @@ function Quiz() {
   }
   if (loading) return <AppShell><Loading text="Preparing quiz..." /></AppShell>
   if (error && !quiz) return <AppShell><Empty title="Quiz unavailable" text={error} /></AppShell>
+  if (!quiz?.questions?.length) return <AppShell><Empty title="No quiz is available for this course yet" text="Please check back after your lecturer publishes quiz questions." action="Back to course" to={`/courses/${courseId}`} /></AppShell>
   return <AppShell><div className="quiz-header"><Link className="back-link" to={`/courses/${courseId}`}>Back to course</Link><span>{Object.keys(answers).length} of {quiz.questions.length} answered</span></div><div className="quiz-wrap"><span className="eyebrow">KNOWLEDGE CHECK</span><h1>{quiz.title}</h1><p>Choose the best answer for each question.</p>{error && <div className="alert error">{error}</div>}<div className="questions">{quiz.questions.map((question, qIndex) => <fieldset key={question.id}><legend><span>{String(qIndex + 1).padStart(2, '0')}</span>{question.text}</legend>{question.options.map((option, index) => <label key={option} className={Number(answers[question.id]) === index ? 'selected' : ''}><input type="radio" name={question.id} checked={Number(answers[question.id]) === index} onChange={() => setAnswers({ ...answers, [question.id]: index })} /><i>{String.fromCharCode(65 + index)}</i>{option}</label>)}</fieldset>)}</div><button className="button primary submit-quiz" onClick={submit}>Submit answers <Icon name="arrow" /></button></div></AppShell>
 }
 
@@ -503,6 +504,81 @@ function AdminCourseManager() {
   return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">CONTENT MANAGEMENT</span><h1>{editingId ? 'Edit course.' : 'Manage courses.'}</h1><p>Publish, update, and remove cloud learning paths from the backend API.</p></div></div><div className="admin-form-layout"><form className="panel-form" onSubmit={submit}>{message && <div className="alert">{message}</div>}<div className="field-row"><label>Course title<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required placeholder="e.g. Serverless on AWS" /></label><label>Course code<input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. AWS 302" /></label></div><label>Description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required rows="4" placeholder="What will students learn?" /></label><div className="field-row"><label>Material link<input type="url" value={form.materialLink} onChange={(e) => setForm({ ...form, materialLink: e.target.value })} placeholder="https://..." /></label><label>Video link<input type="url" value={form.videoLink} onChange={(e) => setForm({ ...form, videoLink: e.target.value })} placeholder="https://..." /></label></div><div className="field-row three"><label>Instructor<input value={form.instructor} onChange={(e) => setForm({ ...form, instructor: e.target.value })} placeholder="Lecturer name" /></label><label>Duration<input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="8 weeks" /></label><label>Level<select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label></div><label>Category<input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Cloud" /></label><label>Course cover image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={changeCover} /></label>{coverPreview && <div className="cover-preview"><img src={coverPreview} alt="" /><span>{coverFile ? coverFile.name : 'Current course cover'}</span></div>}<div className="form-actions"><button className="button primary" disabled={saving}>{saving ? 'Saving...' : editingId ? 'Update course' : 'Publish course'} <Icon name="arrow" /></button>{editingId && <button className="button ghost" type="button" onClick={resetForm}>Cancel edit</button>}</div></form><aside className="form-aside"><span className="eyebrow">PUBLISHED</span><strong>{courses.length}</strong><p>courses currently available to students.</p><Link to="/admin/upload">Upload files to S3 -&gt;</Link></aside></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">COURSE LIBRARY</span><h2>Published courses</h2></div></div>{loading ? <Loading text="Loading courses..." /> : courses.length ? <div className="admin-manage-list">{courses.map((course) => <article key={course.id}><span style={{ background: course.color }}>{course.code}</span><div><strong>{course.title}</strong><small>{course.instructor} - {course.level} - {course.duration}</small><p>{course.description}</p></div><div className="course-actions"><Link className="text-button" to={`/courses/${course.id}`}>View</Link><button type="button" onClick={() => editCourse(course)}>Edit</button><button className="danger-button" type="button" onClick={() => removeCourse(course)}>Delete</button></div></article>)}</div> : <Empty title="No courses found" text="Published courses will appear here." />}</section></AppShell>
 }
 
+function AdminQuizManager() {
+  const emptyQuestion = { text: '', optionA: '', optionB: '', optionC: '', optionD: '', correctAnswer: 'A', explanation: '' }
+  const { courses, loading: coursesLoading } = useCourses()
+  const [selectedCourseId, setSelectedCourseId] = useState('')
+  const [quiz, setQuiz] = useState(null)
+  const [questionsLoading, setQuestionsLoading] = useState(false)
+  const [form, setForm] = useState(emptyQuestion)
+  const [editingId, setEditingId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const toast = useToast()
+  const selectedCourse = courses.find((course) => course.id === selectedCourseId)
+  const answerLetter = (value) => String.fromCharCode(65 + Number(value || 0))
+  const refreshQuestions = useCallback(() => {
+    if (!selectedCourseId) {
+      setQuiz(null)
+      return Promise.resolve()
+    }
+    setQuestionsLoading(true)
+    setError('')
+    return api.get(`/quiz/${selectedCourseId}`).then(({ data }) => setQuiz(data)).catch((err) => {
+      const message = err.response?.data?.message || 'Could not load quiz questions.'
+      setError(message)
+      setQuiz(null)
+    }).finally(() => setQuestionsLoading(false))
+  }, [selectedCourseId])
+  useEffect(() => { refreshQuestions() }, [refreshQuestions])
+  const resetForm = () => { setForm(emptyQuestion); setEditingId(null); setError('') }
+  const editQuestion = (question) => {
+    setEditingId(question.id)
+    setError('')
+    setForm({ text: question.text || '', optionA: question.options?.[0] || '', optionB: question.options?.[1] || '', optionC: question.options?.[2] || '', optionD: question.options?.[3] || '', correctAnswer: answerLetter(question.correctAnswer), explanation: question.explanation || '' })
+  }
+  const payload = () => ({ text: form.text, optionA: form.optionA, optionB: form.optionB, optionC: form.optionC, optionD: form.optionD, correctAnswer: form.correctAnswer, explanation: form.explanation })
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!selectedCourseId) {
+      const message = 'Please select a course before managing quiz questions.'
+      setError(message)
+      toast(message, 'error')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      if (editingId) await api.put(`/quiz/${selectedCourseId}/${editingId}`, payload())
+      else await api.post(`/quiz/${selectedCourseId}`, payload())
+      await refreshQuestions()
+      const message = editingId ? 'Quiz question updated successfully.' : 'Quiz question added successfully.'
+      resetForm()
+      toast(message)
+    } catch (err) {
+      const message = err.response?.data?.message || 'Could not save quiz question.'
+      setError(message)
+      toast(message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+  const removeQuestion = async (question) => {
+    if (!window.confirm('Are you sure you want to delete this quiz question?')) return
+    try {
+      await api.delete(`/quiz/${selectedCourseId}/${question.id}`)
+      await refreshQuestions()
+      if (editingId === question.id) resetForm()
+      toast('Quiz question deleted successfully.')
+    } catch (err) {
+      const message = err.response?.data?.message || 'Could not delete quiz question.'
+      setError(message)
+      toast(message, 'error')
+    }
+  }
+  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">ASSESSMENT MANAGEMENT</span><h1>Manage quizzes.</h1><p>Create, update, and remove course quiz questions from the backend API.</p></div></div><div className="quiz-admin-layout"><form className="panel-form quiz-form" onSubmit={submit}><h3>{editingId ? 'Edit quiz question' : 'Add quiz question'}</h3>{error && <div className="alert error">{error}</div>}<label>Select course<select value={selectedCourseId} onChange={(e) => { setSelectedCourseId(e.target.value); resetForm() }}><option value="">Choose a course</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.title}</option>)}</select></label><label>Question text<textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} rows="4" placeholder="Enter a clear multiple-choice question" required /></label><div className="field-row"><label>Option A<input value={form.optionA} onChange={(e) => setForm({ ...form, optionA: e.target.value })} required /></label><label>Option B<input value={form.optionB} onChange={(e) => setForm({ ...form, optionB: e.target.value })} required /></label></div><div className="field-row"><label>Option C<input value={form.optionC} onChange={(e) => setForm({ ...form, optionC: e.target.value })} required /></label><label>Option D<input value={form.optionD} onChange={(e) => setForm({ ...form, optionD: e.target.value })} required /></label></div><div className="field-row"><label>Correct answer<select value={form.correctAnswer} onChange={(e) => setForm({ ...form, correctAnswer: e.target.value })} required><option>A</option><option>B</option><option>C</option><option>D</option></select></label><label>Explanation optional<input value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} placeholder="Brief feedback or rationale" /></label></div><div className="form-actions"><button className="button primary" disabled={saving || coursesLoading}>{saving ? 'Saving...' : editingId ? 'Update question' : 'Add question'} <Icon name="arrow" /></button>{editingId && <button className="button ghost" type="button" onClick={resetForm}>Cancel edit</button>}</div></form><aside className="form-aside"><span className="eyebrow">SELECTED COURSE</span><strong>{selectedCourse ? selectedCourse.code : '-'}</strong><p>{selectedCourse ? selectedCourse.title : 'Choose a course to view and manage its quiz questions.'}</p></aside></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">QUESTION BANK</span><h2>{selectedCourse ? selectedCourse.title : 'No course selected'}</h2></div>{quiz?.questions?.length ? <span className="question-count">{quiz.questions.length} questions</span> : null}</div>{!selectedCourseId ? <Empty title="Select a course" text="Choose a course from the dropdown to view, add, edit, or delete quiz questions." /> : questionsLoading ? <Loading text="Loading quiz questions..." /> : quiz?.questions?.length ? <div className="quiz-question-list">{quiz.questions.map((question, index) => <article key={question.id}><div className="question-number">{String(index + 1).padStart(2, '0')}</div><div><h3>{question.text}</h3><ol>{question.options.map((option, optionIndex) => <li key={`${question.id}-${optionIndex}`} className={Number(question.correctAnswer) === optionIndex ? 'correct' : ''}><span>{String.fromCharCode(65 + optionIndex)}</span>{option}</li>)}</ol>{question.explanation && <p>{question.explanation}</p>}</div><div className="course-actions"><button type="button" onClick={() => editQuestion(question)}>Edit</button><button className="danger-button" type="button" onClick={() => removeQuestion(question)}>Delete</button></div></article>)}</div> : <Empty title="No quiz is available for this course yet" text="Add the first question using the form above." />}</section></AppShell>
+}
+
 function AdminUpload() {
   const [file, setFile] = useState(null)
   const [folder, setFolder] = useState('courses')
@@ -537,7 +613,7 @@ function AdminUpload() {
 }
 
 function AppRoutes() {
-  return <Routes><Route path="/" element={<Landing />} /><Route path="/public-courses" element={<PublicCourses />} /><Route path="/public-courses/:courseId" element={<PublicCourseDetail />} /><Route path="/explore" element={<Navigate to="/public-courses" replace />} /><Route path="/login" element={<AuthPage />} /><Route path="/register" element={<AuthPage register />} /><Route path="/dashboard" element={<Protected roles={['student']}><Dashboard /></Protected>} /><Route path="/courses" element={<Protected><Courses /></Protected>} /><Route path="/courses/:id" element={<Protected><CourseDetail /></Protected>} /><Route path="/quiz/result" element={<Protected roles={['student']}><QuizResult /></Protected>} /><Route path="/quiz/:courseId" element={<Protected roles={['student']}><Quiz /></Protected>} /><Route path="/results" element={<Protected roles={['student']}><Results /></Protected>} /><Route path="/profile" element={<Protected roles={['student']}><Profile /></Protected>} /><Route path="/profile/settings" element={<Protected roles={['student']}><ProfileSettings /></Protected>} /><Route path="/admin" element={<Protected roles={['admin', 'lecturer']}><AdminDashboard /></Protected>} /><Route path="/admin/courses" element={<Protected roles={['admin', 'lecturer']}><AdminCourseManager /></Protected>} /><Route path="/admin/students" element={<Protected roles={['admin', 'lecturer']}><AdminStudents /></Protected>} /><Route path="/admin/results" element={<Protected roles={['admin', 'lecturer']}><AdminResults /></Protected>} /><Route path="/admin/upload" element={<Protected roles={['admin', 'lecturer']}><AdminUpload /></Protected>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes>
+  return <Routes><Route path="/" element={<Landing />} /><Route path="/public-courses" element={<PublicCourses />} /><Route path="/public-courses/:courseId" element={<PublicCourseDetail />} /><Route path="/explore" element={<Navigate to="/public-courses" replace />} /><Route path="/login" element={<AuthPage />} /><Route path="/register" element={<AuthPage register />} /><Route path="/dashboard" element={<Protected roles={['student']}><Dashboard /></Protected>} /><Route path="/courses" element={<Protected><Courses /></Protected>} /><Route path="/courses/:id" element={<Protected><CourseDetail /></Protected>} /><Route path="/quiz/result" element={<Protected roles={['student']}><QuizResult /></Protected>} /><Route path="/quiz/:courseId" element={<Protected roles={['student']}><Quiz /></Protected>} /><Route path="/results" element={<Protected roles={['student']}><Results /></Protected>} /><Route path="/profile" element={<Protected roles={['student']}><Profile /></Protected>} /><Route path="/profile/settings" element={<Protected roles={['student']}><ProfileSettings /></Protected>} /><Route path="/admin" element={<Protected roles={['admin', 'lecturer']}><AdminDashboard /></Protected>} /><Route path="/admin/courses" element={<Protected roles={['admin', 'lecturer']}><AdminCourseManager /></Protected>} /><Route path="/admin/quizzes" element={<Protected roles={['admin', 'lecturer']}><AdminQuizManager /></Protected>} /><Route path="/admin/students" element={<Protected roles={['admin', 'lecturer']}><AdminStudents /></Protected>} /><Route path="/admin/results" element={<Protected roles={['admin', 'lecturer']}><AdminResults /></Protected>} /><Route path="/admin/upload" element={<Protected roles={['admin', 'lecturer']}><AdminUpload /></Protected>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes>
 }
 
 export default function App() {

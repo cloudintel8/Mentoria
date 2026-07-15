@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'
-import { createQuizQuestion, deleteQuizQuestion, findQuiz, saveResult, updateQuizQuestion } from '../config/db.js'
+import { createNotification, createQuizQuestion, deleteQuizQuestion, findQuiz, saveResult, updateQuizQuestion } from '../config/db.js'
 import { authenticate, allowRoles } from '../middleware/auth.js'
 
 const router = Router()
@@ -85,6 +85,7 @@ router.post('/submit', authenticate, allowRoles('student'), async (req, res) => 
   }
 
   await saveResult(result, answers)
+  await createNotification({ userId: req.user.id, role: 'student', type: 'quiz', title: 'Quiz result available', message: `Your ${quiz.title} result is ready: ${result.percentage}%.`, relatedCourseId: courseId })
 
   res.status(201).json(result)
 })

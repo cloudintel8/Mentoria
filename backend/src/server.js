@@ -9,6 +9,9 @@ import quizRoutes from './routes/quizzes.js'
 import resultRoutes from './routes/results.js'
 import profileRoutes from './routes/profile.js'
 import uploadRoutes from './routes/upload.js'
+import assignmentRoutes from './routes/assignments.js'
+import studentRoutes from './routes/student.js'
+import notificationRoutes from './routes/notifications.js'
 import { initializeDatabase } from './config/db.js'
 
 const requiredEnv = ['JWT_SECRET']
@@ -33,6 +36,9 @@ app.use('/api/quiz', quizRoutes)
 app.use('/api/results', resultRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/upload', uploadRoutes)
+app.use('/api/assignments', assignmentRoutes)
+app.use('/api/student', studentRoutes)
+app.use('/api/notifications', notificationRoutes)
 
 app.use((req, res) => res.status(404).json({ message: 'API route not found.' }))
 app.use((error, req, res, next) => {

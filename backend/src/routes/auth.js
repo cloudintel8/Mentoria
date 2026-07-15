@@ -3,13 +3,9 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { randomUUID } from 'node:crypto'
 import { createUser, findUserByEmail } from '../config/db.js'
+import { presentUser } from '../services/s3.js'
 
 const router = Router()
-
-function publicUser(user) {
-  const { password, ...safeUser } = user
-  return safeUser
-}
 
 function issueToken(user) {
   return jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '8h' })
@@ -33,7 +29,7 @@ router.post('/register', async (req, res) => {
 
   await createUser(user)
 
-  res.status(201).json({ message: 'Registration successful.', token: issueToken(user), user: publicUser(user) })
+  res.status(201).json({ message: 'Registration successful.', token: issueToken(user), user: await presentUser(user) })
 })
 
 router.post('/login', async (req, res) => {
@@ -46,7 +42,7 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ message: 'Incorrect email or password.' })
   }
 
-  res.json({ message: 'Login successful.', token: issueToken(user), user: publicUser(user) })
+  res.json({ message: 'Login successful.', token: issueToken(user), user: await presentUser(user) })
 })
 
 export default router

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import api from './api'
 import './App.css'
@@ -23,10 +23,11 @@ const icons = {
   settings: 'M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm8.5 4a8.8 8.8 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a8 8 0 0 0-1.7-1L16 3.5h-4l-.4 2.6a8 8 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a8.8 8.8 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.4 2.6h4l.4-2.6a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1Z',
   students: 'M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-1a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM2 21a6 6 0 0 1 12 0H2Zm12.5 0a7.5 7.5 0 0 0-2.1-5.2A5 5 0 0 1 22 18v3h-7.5Z',
   moon: 'M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5Z',
+  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4',
 }
 
 function Icon({ name, size = 20 }) {
-  const strokeOnly = ['arrow', 'plus', 'upload', 'menu'].includes(name)
+  const strokeOnly = ['arrow', 'plus', 'upload', 'menu', 'bell'].includes(name)
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill={strokeOnly ? 'none' : 'currentColor'} stroke={strokeOnly ? 'currentColor' : 'none'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={icons[name]} /></svg>
 }
 
@@ -37,7 +38,7 @@ function ToastProvider({ children }) {
     setToasts((items) => [...items, { id, message, type }])
     setTimeout(() => setToasts((items) => items.filter((item) => item.id !== id)), 3500)
   }, [])
-  return <ToastContext.Provider value={showToast}>{children}<div className="toast-stack">{toasts.map((toast) => <div key={toast.id} className={`toast ${toast.type}`}>{toast.message}</div>)}</div></ToastContext.Provider>
+  return <ToastContext.Provider value={showToast}>{children}<div className="toast-stack">{toasts.map((toast) => <div key={toast.id} className={`toast ${toast.type}`}><span>{toast.message}</span><button type="button" aria-label="Dismiss notification" onClick={() => setToasts((items) => items.filter((item) => item.id !== toast.id))}>×</button></div>)}</div></ToastContext.Provider>
 }
 
 function useToast() {
@@ -90,8 +91,25 @@ function ThemeToggle() {
   return <button className="theme-toggle" type="button" onClick={toggleTheme}><Icon name="moon" size={17} />{theme === 'dark' ? 'Light' : 'Dark'}</button>
 }
 
+function NotificationBell() {
+  const { auth } = useContext(AuthContext)
+  const navigate = useNavigate()
+  const [items, setItems] = useState([])
+  const [open, setOpen] = useState(false)
+  const refresh = useCallback(() => api.get(`/notifications/${auth.user.id}`).then(({ data }) => setItems(data)).catch(() => {}), [auth.user.id])
+  useEffect(() => { refresh() }, [refresh])
+  const unread = items.filter((item) => !item.isRead).length
+  const markRead = async (item) => { if (!item.isRead) { await api.put(`/notifications/${item.id}/read`).catch(() => {}); refresh() } if (item.relatedCourseId) navigate(`/courses/${item.relatedCourseId}`) }
+  return <div className="notification-bell"><button type="button" className="icon-button" aria-label="Notifications" onClick={() => setOpen((value) => !value)}><Icon name="bell" size={18} />{unread > 0 && <b>{unread > 9 ? '9+' : unread}</b>}</button>{open && <div className="notification-panel"><div className="notification-panel-head"><strong>Notifications</strong><button type="button" onClick={async () => { await api.put(`/notifications/${auth.user.id}/read-all`); refresh() }}>Mark all read</button></div>{items.length ? items.slice(0, 8).map((item) => <button type="button" className={item.isRead ? 'notification-item read' : 'notification-item'} key={item.id} onClick={() => markRead(item)}><strong>{item.title}</strong><span>{item.message}</span><small>{formatDate(item.createdAt)}</small></button>) : <div className="notification-empty">No notifications yet.</div>}</div>}</div>
+}
+
 function Loading({ text = 'Loading...' }) {
   return <div className="loading enhanced"><span className="spinner" />{text}</div>
+}
+
+function SafeImage({ src, alt = '', className }) {
+  const [failed, setFailed] = useState(false)
+  return <img className={className} src={!failed && src ? src : '/icons.svg'} onError={() => setFailed(true)} alt={alt} />
 }
 
 function Empty({ title, text, action, to }) {
@@ -176,9 +194,9 @@ function AppShell({ children, admin = false }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const nav = admin
-    ? [{ to: '/admin', label: 'Overview', icon: 'dashboard' }, { to: '/admin/courses', label: 'Manage courses', icon: 'courses' }, { to: '/admin/quizzes', label: 'Manage quizzes', icon: 'quiz' }, { to: '/admin/students', label: 'Manage students', icon: 'students' }, { to: '/admin/results', label: 'Student results', icon: 'result' }, { to: '/admin/upload', label: 'S3 uploads', icon: 'upload' }]
+    ? [{ to: '/admin', label: 'Overview', icon: 'dashboard' }, { to: '/admin/courses', label: 'Manage courses', icon: 'courses' }, { to: '/admin/assignments', label: 'Manage assignments', icon: 'file' }, { to: '/admin/quizzes', label: 'Manage quizzes', icon: 'quiz' }, { to: '/admin/students', label: 'Manage students', icon: 'students' }, { to: '/admin/results', label: 'Student results', icon: 'result' }, { to: '/admin/upload', label: 'S3 uploads', icon: 'upload' }]
     : [{ to: '/dashboard', label: 'Overview', icon: 'dashboard' }, { to: '/courses', label: 'My courses', icon: 'courses' }, { to: '/results', label: 'Quiz results', icon: 'result' }, { to: '/profile', label: 'My profile', icon: 'profile' }]
-  return <div className="app-shell"><aside className={open ? 'sidebar open' : 'sidebar'}><div className="side-head"><Logo /><button className="icon-button mobile-only" onClick={() => setOpen(false)}>X</button></div><span className="side-label">{admin ? 'ADMIN WORKSPACE' : 'LEARNING SPACE'}</span><nav>{nav.map((item) => <NavLink key={item.to} to={item.to} end onClick={() => setOpen(false)}><Icon name={item.icon} /><span>{item.label}</span></NavLink>)}</nav><div className="side-bottom"><div className="user-chip"><span>{auth.user.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span><div><strong>{auth.user.name}</strong><small>{auth.user.role}</small></div></div><button onClick={() => { signOut(); navigate('/') }}><Icon name="logout" /> Sign out</button></div></aside><section className="app-main"><header className="app-top"><button className="icon-button mobile-only" onClick={() => setOpen(true)}><Icon name="menu" /></button><div><span className="eyebrow">CLOUDLEARN</span></div><div className="top-actions"><ThemeToggle /><div className="top-status"><span className="online-dot" /> AWS ready</div></div></header><div className="page-content">{children}</div></section></div>
+  return <div className="app-shell"><aside className={open ? 'sidebar open' : 'sidebar'}><div className="side-head"><Logo /><button className="icon-button mobile-only" onClick={() => setOpen(false)}>X</button></div><span className="side-label">{admin ? 'ADMIN WORKSPACE' : 'LEARNING SPACE'}</span><nav>{nav.map((item) => <NavLink key={item.to} to={item.to} end onClick={() => setOpen(false)}><Icon name={item.icon} /><span>{item.label}</span></NavLink>)}</nav><div className="side-bottom"><div className="user-chip"><span>{auth.user.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span><div><strong>{auth.user.name}</strong><small>{auth.user.role}</small></div></div><button onClick={() => { signOut(); navigate('/') }}><Icon name="logout" /> Sign out</button></div></aside><section className="app-main"><header className="app-top"><button className="icon-button mobile-only" onClick={() => setOpen(true)}><Icon name="menu" /></button><div><span className="eyebrow">CLOUDLEARN</span></div><div className="top-actions"><NotificationBell /><ThemeToggle /><div className="top-status"><span className="online-dot" /> AWS ready</div></div></header><div className="page-content">{children}</div></section></div>
 }
 
 function useCourses(studentId) {
@@ -221,9 +239,12 @@ function Dashboard() {
   const { auth } = useContext(AuthContext)
   const { courses, loading } = useCourses(auth.user.id)
   const [profile, setProfile] = useState(null)
-  useEffect(() => { api.get(`/profile/${auth.user.id}`).then(({ data }) => setProfile(data)).catch(() => {}) }, [auth.user.id])
+  const [assignments, setAssignments] = useState([])
+  const [notifications, setNotifications] = useState([])
+  useEffect(() => { api.get(`/profile/${auth.user.id}`).then(({ data }) => setProfile(data)).catch(() => {}); api.get(`/student/${auth.user.id}/assignments`).then(({ data }) => setAssignments(data)).catch(() => {}); api.get(`/notifications/${auth.user.id}`).then(({ data }) => setNotifications(data)).catch(() => {}) }, [auth.user.id])
   const averageProgress = courses.length ? Math.round(courses.reduce((sum, course) => sum + Number(course.progress || 0), 0) / courses.length) : 0
-  return <AppShell><div className="page-heading"><div><span className="eyebrow">STUDENT DASHBOARD</span><h1>Good evening, {auth.user.name.split(' ')[0]}.</h1><p>Pick up where you left off and keep the momentum going.</p></div><div className="heading-actions"><Link className="button ghost" to="/profile">My Profile</Link><Link className="button primary" to="/courses">Browse courses <Icon name="arrow" /></Link></div></div><div className="stats-row"><StatCard icon="courses" label="Total courses" value={loading ? '-' : courses.length} /><StatCard icon="quiz" label="Completed quizzes" value={profile?.completedQuizzes ?? 0} /><StatCard icon="result" label="Average score" value={`${profile?.averageScore ?? 0}%`} /><StatCard icon="dashboard" label="Course progress" value={`${averageProgress}%`} /><StatCard icon="file" label="Available assessments" value={courses.reduce((sum, course) => sum + Number(course.totalQuizzes || 0), 0)} /></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">CONTINUE LEARNING</span><h2>Your courses</h2></div><Link to="/courses">View all -&gt;</Link></div>{loading ? <Loading text="Loading courses..." /> : <div className="course-grid">{courses.slice(0, 3).map((course) => <CourseCard key={course.id} course={course} />)}</div>}</section></AppShell>
+  const pendingAssignments = assignments.filter((assignment) => !['Graded', 'Submitted', 'Late'].includes(assignment.status)).length
+  return <AppShell><div className="page-heading"><div><span className="eyebrow">STUDENT DASHBOARD</span><h1>Good evening, {auth.user.name.split(' ')[0]}.</h1><p>Pick up where you left off and keep the momentum going.</p></div><div className="heading-actions"><Link className="button ghost" to="/profile">My Profile</Link><Link className="button primary" to="/courses">Browse courses <Icon name="arrow" /></Link></div></div><div className="stats-row"><StatCard icon="courses" label="Total courses" value={loading ? '-' : courses.length} /><StatCard icon="quiz" label="Completed quizzes" value={profile?.completedQuizzes ?? 0} /><StatCard icon="result" label="Average score" value={`${profile?.averageScore ?? 0}%`} /><StatCard icon="dashboard" label="Course progress" value={`${averageProgress}%`} /><StatCard icon="file" label="Pending assignments" value={pendingAssignments} /></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">CONTINUE LEARNING</span><h2>Your courses</h2></div><Link to="/courses">View all -&gt;</Link></div>{loading ? <Loading text="Loading courses..." /> : <div className="course-grid">{courses.slice(0, 3).map((course) => <CourseCard key={course.id} course={course} />)}</div>}</section><section className="dashboard-panels"><div className="panel-list"><div className="section-title"><div><span className="eyebrow">UPCOMING WORK</span><h2>Assignments</h2></div></div>{assignments.length ? assignments.slice(0, 4).map((assignment) => <article key={assignment.id}><strong>{assignment.title}</strong><span>{assignment.status} · {assignment.dueDate ? formatDate(assignment.dueDate) : 'No due date'}</span></article>) : <div className="empty compact-empty"><h2>No assignments yet</h2><p>Your upcoming coursework will appear here.</p></div>}</div><div className="panel-list"><div className="section-title"><div><span className="eyebrow">RECENT UPDATES</span><h2>Notifications</h2></div></div>{notifications.length ? notifications.slice(0, 4).map((item) => <article key={item.id}><strong>{item.title}</strong><span>{item.message}</span></article>) : <div className="empty compact-empty"><h2>No notifications yet</h2><p>Course updates will appear here.</p></div>}</div></section></AppShell>
 }
 
 function StatCard({ icon, label, value }) {
@@ -282,11 +303,23 @@ function CourseDetail() {
   const { id } = useParams()
   const { auth } = useContext(AuthContext)
   const { courses, loading } = useCourses(auth?.user?.id)
+  const [lessons, setLessons] = useState([])
+  const [lessonsLoading, setLessonsLoading] = useState(true)
+  const [assignments, setAssignments] = useState([])
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true)
+  useEffect(() => {
+    setLessonsLoading(true)
+    api.get(`/courses/${id}/lessons`).then(({ data }) => setLessons(data)).catch(() => setLessons([])).finally(() => setLessonsLoading(false))
+  }, [id])
+  useEffect(() => {
+    setAssignmentsLoading(true)
+    api.get(`/courses/${id}/assignments`).then(({ data }) => setAssignments(data)).catch(() => setAssignments([])).finally(() => setAssignmentsLoading(false))
+  }, [id])
   const course = courses.find((item) => item.id === id)
   if (loading) return <AppShell><Loading text="Loading course..." /></AppShell>
   if (!course) return <AppShell><Empty title="Course not found" text="This course may no longer be available." /></AppShell>
   const heroStyle = course.coverImageUrl ? { '--course-color': course.color, backgroundImage: `linear-gradient(135deg, rgba(22,24,54,.86), rgba(22,24,54,.48)), url("${course.coverImageUrl}")` } : { '--course-color': course.color }
-  return <AppShell><div className="detail-actions"><Link className="back-link" to="/courses">Back to courses</Link><Link className="button ghost" to="/dashboard">Go to Dashboard</Link></div><div className={course.coverImageUrl ? 'detail-hero has-image' : 'detail-hero'} style={heroStyle}><div><span className="tag">{course.code} - {course.level}</span><h1>{course.title}</h1><p>{course.description}</p><div className="detail-meta"><span>By <strong>{course.instructor}</strong></span><span>{course.duration}</span><span>{course.progress}% completed</span></div></div><div className="detail-cloud">{course.category || 'Cloud'}</div></div><div className="detail-layout"><main><span className="eyebrow">COURSE RESOURCES</span><h2>Materials & lessons</h2><a className="resource-card" href={course.materialLink} target="_blank" rel="noreferrer"><span className="resource-icon"><Icon name="file" /></span><div><small>COURSE MATERIAL</small><strong>Lecture notes and learning resources</strong><span>Open material</span></div></a><a className="resource-card" href={course.videoLink} target="_blank" rel="noreferrer"><span className="resource-icon video"><Icon name="play" /></span><div><small>VIDEO LESSON</small><strong>Watch the course video</strong><span>Start watching</span></div></a></main><aside className="quiz-callout"><span className="eyebrow light">KNOWLEDGE CHECK</span><h3>Ready to test what you learned?</h3><p>Take the multiple-choice quiz and get your score instantly.</p><Link className="button light full" to={`/quiz/${course.id}`}>Start quiz <Icon name="arrow" /></Link></aside></div></AppShell>
+  return <AppShell><div className="detail-actions"><Link className="back-link" to="/courses">Back to courses</Link><Link className="button ghost" to="/dashboard">Go to Dashboard</Link></div><div className={course.coverImageUrl ? 'detail-hero has-image' : 'detail-hero'} style={heroStyle}><div><span className="tag">{course.code} - {course.level}</span><h1>{course.title}</h1><p>{course.description}</p><div className="detail-meta"><span>By <strong>{course.instructor}</strong></span><span>{course.duration}</span><span>{course.progress}% completed</span></div></div><div className="detail-cloud">{course.category || 'Cloud'}</div></div><div className="detail-layout"><main><span className="eyebrow">COURSE RESOURCES</span><h2>Materials & lessons</h2>{lessonsLoading ? <Loading text="Loading lessons..." /> : lessons.length ? <div className="lesson-list">{lessons.map((lesson, index) => <article className="lesson-card" key={lesson.id}><div className="lesson-card-heading"><span className="lesson-number">{String(index + 1).padStart(2, "0")}</span><div><h3>{lesson.lessonTitle}</h3><p>{lesson.lessonDescription || "Continue through this lesson at your own pace."}</p></div></div><div className="lesson-resources">{lesson.materialUrl ? <a className="button ghost" href={lesson.materialUrl} target="_blank" rel="noreferrer"><Icon name="file" /> Open material</a> : <span className="resource-disabled"><Icon name="file" /> Material unavailable</span>}{lesson.videoUrl ? <a className="button ghost" href={lesson.videoUrl} target="_blank" rel="noreferrer"><Icon name="play" /> Watch video</a> : <span className="resource-disabled"><Icon name="play" /> Video unavailable</span>}</div></article>)}</div> : <div className="empty lesson-empty"><span>CL</span><h2>No lessons added yet.</h2><p>Course resources will appear here when lessons are published.</p></div>}<section className="assignments-section"><div className="section-title"><div><span className="eyebrow">COURSE ASSIGNMENTS</span><h2>Assignments</h2></div></div>{assignmentsLoading ? <Loading text="Loading assignments..." /> : assignments.length ? <div className="student-assignment-list">{assignments.map((assignment) => <StudentAssignmentCard key={assignment.id} assignment={assignment} onSubmitted={() => api.get("/courses/" + id + "/assignments").then(({ data }) => setAssignments(data))} />)}</div> : <div className="empty assignment-empty"><span>CL</span><h2>No assignments available for this course.</h2><p>Check back when your lecturer posts new coursework.</p></div>}</section></main><aside className="quiz-callout"><span className="eyebrow light">KNOWLEDGE CHECK</span><h3>Ready to test what you learned?</h3><p>Take the multiple-choice quiz and get your score instantly.</p><Link className="button light full" to={`/quiz/${course.id}`}>Start quiz <Icon name="arrow" /></Link></aside></div></AppShell>
 }
 
 function Quiz() {
@@ -343,7 +376,7 @@ function Profile() {
   const [loading, setLoading] = useState(true)
   useEffect(() => { api.get(`/profile/${auth.user.id}`).then(({ data }) => setProfile(data)).finally(() => setLoading(false)) }, [auth.user.id])
   if (loading) return <AppShell><Loading text="Loading profile..." /></AppShell>
-  return <AppShell><div className="profile-hero"><img src={profile.profileImageUrl || '/icons.svg'} alt="" /><div><span className="eyebrow">MY PROFILE</span><h1>{profile.name}</h1><p>{profile.email} - {profile.role}</p><small>Joined {formatDate(profile.joinedAt)}</small></div><Link className="button primary" to="/profile/settings"><Icon name="settings" /> Profile settings</Link></div><div className="stats-row"><StatCard icon="courses" label="Enrolled courses" value={profile.totalEnrolledCourses} /><StatCard icon="quiz" label="Completed quizzes" value={profile.completedQuizzes} /><StatCard icon="result" label="Average score" value={`${profile.averageScore}%`} /><StatCard icon="dashboard" label="Overall progress" value={`${profile.overallProgress}%`} /></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>Quiz attempt history</h2></div></div><AttemptList items={profile.recentQuizAttempts} /></section></AppShell>
+  return <AppShell><div className="profile-hero"><SafeImage src={profile.profileImageUrl} /><div><span className="eyebrow">MY PROFILE</span><h1>{profile.name}</h1><p>{profile.email} - {profile.role}</p><small>Joined {formatDate(profile.joinedAt)}</small></div><Link className="button primary" to="/profile/settings"><Icon name="settings" /> Profile settings</Link></div><div className="stats-row"><StatCard icon="courses" label="Enrolled courses" value={profile.totalEnrolledCourses} /><StatCard icon="quiz" label="Completed quizzes" value={profile.completedQuizzes} /><StatCard icon="result" label="Average score" value={`${profile.averageScore}%`} /><StatCard icon="dashboard" label="Overall progress" value={`${profile.overallProgress}%`} /></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>Quiz attempt history</h2></div></div><AttemptList items={profile.recentQuizAttempts} /></section></AppShell>
 }
 
 function ProfileSettings() {
@@ -394,14 +427,14 @@ function ProfileSettings() {
     }
   }
   if (loading) return <AppShell><Loading text="Loading profile settings..." /></AppShell>
-  return <AppShell><div className="page-heading compact"><div><span className="eyebrow">PROFILE SETTINGS</span><h1>Manage your account.</h1><p>Update your personal details, password, and profile picture.</p></div></div><div className="settings-grid"><form className="panel-form" onSubmit={saveProfile}><h3>Personal details</h3><label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label><label>Email<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label><button className="button primary">Save profile</button></form><form className="panel-form" onSubmit={savePassword}><h3>Change password</h3><label>Old password<input type="password" value={passwords.oldPassword} onChange={(e) => setPasswords({ ...passwords, oldPassword: e.target.value })} required /></label><label>New password<input type="password" value={passwords.newPassword} onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })} required /></label><button className="button primary">Update password</button></form><form className="panel-form avatar-form" onSubmit={uploadAvatar}><h3>Profile picture</h3><img src={profile.profileImageUrl || '/icons.svg'} alt="" /><input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0])} /><button className="button primary">Upload picture</button></form></div></AppShell>
+  return <AppShell><div className="page-heading compact"><div><span className="eyebrow">PROFILE SETTINGS</span><h1>Manage your account.</h1><p>Update your personal details, password, and profile picture.</p></div></div><div className="settings-grid"><form className="panel-form" onSubmit={saveProfile}><h3>Personal details</h3><label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label><label>Email<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label><button className="button primary">Save profile</button></form><form className="panel-form" onSubmit={savePassword}><h3>Change password</h3><label>Old password<input type="password" value={passwords.oldPassword} onChange={(e) => setPasswords({ ...passwords, oldPassword: e.target.value })} required /></label><label>New password<input type="password" value={passwords.newPassword} onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })} required /></label><button className="button primary">Update password</button></form><form className="panel-form avatar-form" onSubmit={uploadAvatar}><h3>Profile picture</h3><SafeImage src={profile.profileImageUrl} /><input type="file" accept="image/*" onChange={(e) => setFile(e.target.files[0])} /><button className="button primary">Upload picture</button></form></div></AppShell>
 }
 
 function AdminDashboard() {
   const [stats, setStats] = useState(null)
   const { courses } = useCourses()
   useEffect(() => { api.get('/admin/stats').then(({ data }) => setStats(data)).catch(() => {}) }, [])
-  return <AppShell admin><div className="page-heading"><div><span className="eyebrow">ADMIN OVERVIEW</span><h1>Learning operations.</h1><p>Manage learners, course content, and cloud-hosted resources.</p></div><div className="heading-actions"><Link className="button ghost" to="/admin/students"><Icon name="students" /> Manage Students</Link><Link className="button primary" to="/admin/courses"><Icon name="plus" /> Add a course</Link></div></div><div className="stats-row"><StatCard icon="students" label="Total students" value={stats?.totalStudents ?? '-'} /><StatCard icon="courses" label="Total courses" value={stats?.totalCourses ?? courses.length} /><StatCard icon="quiz" label="Quiz attempts" value={stats?.totalQuizAttempts ?? '-'} /><StatCard icon="result" label="Average class score" value={`${stats?.averageClassScore ?? 0}%`} /></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">RECENT CONTENT</span><h2>Published courses</h2></div></div><div className="admin-course-list">{courses.map((course) => <div key={course.id}><span style={{ background: course.color }}>{course.code}</span><div><strong>{course.title}</strong><small>{course.instructor} - {course.level}</small></div><Link to={`/courses/${course.id}`}>View</Link></div>)}</div></section></AppShell>
+  return <AppShell admin><div className="page-heading"><div><span className="eyebrow">ADMIN OVERVIEW</span><h1>Learning operations.</h1><p>Manage learners, course content, and cloud-hosted resources.</p></div><div className="heading-actions"><Link className="button ghost" to="/admin/students"><Icon name="students" /> Manage Students</Link><Link className="button primary" to="/admin/courses"><Icon name="plus" /> Add a course</Link></div></div><div className="stats-row"><StatCard icon="students" label="Total students" value={stats?.totalStudents ?? '-'} /><StatCard icon="courses" label="Total courses" value={stats?.totalCourses ?? courses.length} /><StatCard icon="quiz" label="Quiz attempts" value={stats?.totalQuizAttempts ?? '-'} /><StatCard icon="result" label="Average class score" value={`${stats?.averageClassScore ?? 0}%`} /> <StatCard icon="file" label="Total lessons" value={stats?.totalLessons ?? 0} /> <StatCard icon="file" label="Total assignments" value={stats?.totalAssignments ?? 0} /> <StatCard icon="students" label="Pending submissions" value={stats?.pendingSubmissions ?? 0} /></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">RECENT CONTENT</span><h2>Published courses</h2></div></div><div className="admin-course-list">{courses.map((course) => <div key={course.id}><span style={{ background: course.color }}>{course.code}</span><div><strong>{course.title}</strong><small>{course.instructor} - {course.level}</small></div><Link to={`/courses/${course.id}`}>View</Link></div>)}</div></section></AppShell>
 }
 
 function AdminResults() {
@@ -416,26 +449,37 @@ function AdminStudents() {
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   useEffect(() => { api.get('/admin/students').then(({ data }) => setStudents(data)).finally(() => setLoading(false)) }, [])
-  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">STUDENT MANAGEMENT</span><h1>Manage students.</h1><p>Track learner activity, quiz completion, and average scores.</p></div></div>{loading ? <Loading text="Loading students..." /> : students.length ? <div className="student-table"><div className="student-table-head"><span>Student</span><span>Joined</span><span>Completed quizzes</span><span>Average score</span><span>Last activity</span></div>{students.map((student) => <article key={student.id}><div className="student-cell"><img src={student.profileImageUrl || '/icons.svg'} alt="" /><div><strong>{student.name}</strong><small>{student.email}</small></div></div><span>{formatDate(student.joinedAt)}</span><span>{student.completedQuizzes}</span><span>{student.averageScore}%</span><span>{student.lastActivity ? formatDate(student.lastActivity) : 'No activity yet'}</span></article>)}</div> : <Empty title="No students found" text="Registered students will appear here." />}</AppShell>
+  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">STUDENT MANAGEMENT</span><h1>Manage students.</h1><p>Track learner activity, quiz completion, and average scores.</p></div></div>{loading ? <Loading text="Loading students..." /> : students.length ? <div className="student-table"><div className="student-table-head"><span>Student</span><span>Joined</span><span>Completed quizzes</span><span>Average score</span><span>Last activity</span></div>{students.map((student) => <article key={student.id}><div className="student-cell"><SafeImage src={student.profileImageUrl} /><div><strong>{student.name}</strong><small>{student.email}</small></div></div><span>{formatDate(student.joinedAt)}</span><span>{student.completedQuizzes}</span><span>{student.averageScore}%</span><span>{student.lastActivity ? formatDate(student.lastActivity) : 'No activity yet'}</span></article>)}</div> : <Empty title="No students found" text="Registered students will appear here." />}</AppShell>
 }
 
 function AdminCourseManager() {
   const emptyForm = { title: '', description: '', materialLink: '', videoLink: '', code: '', instructor: '', duration: '', level: 'Beginner', category: 'Cloud' }
   const [form, setForm] = useState(emptyForm)
   const [coverFile, setCoverFile] = useState(null)
+  const [materialFile, setMaterialFile] = useState(null)
+  const [videoFile, setVideoFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState('')
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const formRef = useRef(null)
+  const titleInputRef = useRef(null)
   const { courses, loading, refresh } = useCourses()
   const toast = useToast()
-  const resetForm = () => { setForm(emptyForm); setCoverFile(null); setCoverPreview(''); setEditingId(null); setMessage('') }
+  const resetForm = () => { setForm(emptyForm); setCoverFile(null); setMaterialFile(null); setVideoFile(null); setCoverPreview(''); setEditingId(null); setMessage('') }
   const editCourse = (course) => {
     setEditingId(course.id)
     setMessage('')
     setCoverFile(null)
+    setMaterialFile(null)
+    setVideoFile(null)
     setCoverPreview(course.coverImageUrl || '')
     setForm({ title: course.title || '', description: course.description || '', materialLink: course.materialLink || '', videoLink: course.videoLink || '', code: course.code || '', instructor: course.instructor || '', duration: course.duration || '', level: course.level || 'Beginner', category: course.category || 'Cloud', coverImageUrl: course.coverImageUrl || '' })
+    toast(`Editing course: ${course.title}`)
+    window.setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      titleInputRef.current?.focus()
+    }, 0)
   }
   const changeCover = (event) => {
     const file = event.target.files?.[0]
@@ -460,6 +504,8 @@ function AdminCourseManager() {
     const body = new FormData()
     Object.entries(form).forEach(([key, value]) => body.append(key, value ?? ''))
     if (coverFile) body.append('coverImage', coverFile)
+    if (materialFile) body.append('materialFile', materialFile)
+    if (videoFile) body.append('videoFile', videoFile)
     return body
   }
   const submit = async (event) => {
@@ -473,6 +519,8 @@ function AdminCourseManager() {
       await refresh()
       setForm(emptyForm)
       setCoverFile(null)
+      setMaterialFile(null)
+      setVideoFile(null)
       setCoverPreview('')
       setEditingId(null)
       const message = editingId ? 'Course updated successfully.' : 'Course added successfully.'
@@ -501,7 +549,101 @@ function AdminCourseManager() {
       toast(message, 'error')
     }
   }
-  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">CONTENT MANAGEMENT</span><h1>{editingId ? 'Edit course.' : 'Manage courses.'}</h1><p>Publish, update, and remove cloud learning paths from the backend API.</p></div></div><div className="admin-form-layout"><form className="panel-form" onSubmit={submit}>{message && <div className="alert">{message}</div>}<div className="field-row"><label>Course title<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required placeholder="e.g. Serverless on AWS" /></label><label>Course code<input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. AWS 302" /></label></div><label>Description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required rows="4" placeholder="What will students learn?" /></label><div className="field-row"><label>Material link<input type="url" value={form.materialLink} onChange={(e) => setForm({ ...form, materialLink: e.target.value })} placeholder="https://..." /></label><label>Video link<input type="url" value={form.videoLink} onChange={(e) => setForm({ ...form, videoLink: e.target.value })} placeholder="https://..." /></label></div><div className="field-row three"><label>Instructor<input value={form.instructor} onChange={(e) => setForm({ ...form, instructor: e.target.value })} placeholder="Lecturer name" /></label><label>Duration<input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="8 weeks" /></label><label>Level<select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label></div><label>Category<input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Cloud" /></label><label>Course cover image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={changeCover} /></label>{coverPreview && <div className="cover-preview"><img src={coverPreview} alt="" /><span>{coverFile ? coverFile.name : 'Current course cover'}</span></div>}<div className="form-actions"><button className="button primary" disabled={saving}>{saving ? 'Saving...' : editingId ? 'Update course' : 'Publish course'} <Icon name="arrow" /></button>{editingId && <button className="button ghost" type="button" onClick={resetForm}>Cancel edit</button>}</div></form><aside className="form-aside"><span className="eyebrow">PUBLISHED</span><strong>{courses.length}</strong><p>courses currently available to students.</p><Link to="/admin/upload">Upload files to S3 -&gt;</Link></aside></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">COURSE LIBRARY</span><h2>Published courses</h2></div></div>{loading ? <Loading text="Loading courses..." /> : courses.length ? <div className="admin-manage-list">{courses.map((course) => <article key={course.id}><span style={{ background: course.color }}>{course.code}</span><div><strong>{course.title}</strong><small>{course.instructor} - {course.level} - {course.duration}</small><p>{course.description}</p></div><div className="course-actions"><Link className="text-button" to={`/courses/${course.id}`}>View</Link><button type="button" onClick={() => editCourse(course)}>Edit</button><button className="danger-button" type="button" onClick={() => removeCourse(course)}>Delete</button></div></article>)}</div> : <Empty title="No courses found" text="Published courses will appear here." />}</section></AppShell>
+  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">CONTENT MANAGEMENT</span><h1>{editingId ? 'Edit course.' : 'Manage courses.'}</h1><p>Publish, update, and remove cloud learning paths from the backend API.</p></div></div><div className="admin-form-layout"><form ref={formRef} className="panel-form" onSubmit={submit}>{message && <div className="alert">{message}</div>}<div className="field-row"><label>Course title<input ref={titleInputRef} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required placeholder="e.g. Serverless on AWS" /></label><label>Course code<input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. AWS 302" /></label></div><label>Description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required rows="4" placeholder="What will students learn?" /></label><div className="field-row"><label>Material link<input type="url" value={form.materialLink} onChange={(e) => setForm({ ...form, materialLink: e.target.value })} placeholder="https://..." /></label><label>Video link<input type="url" value={form.videoLink} onChange={(e) => setForm({ ...form, videoLink: e.target.value })} placeholder="https://..." /></label></div><div className="field-row three"><label>Instructor<input value={form.instructor} onChange={(e) => setForm({ ...form, instructor: e.target.value })} placeholder="Lecturer name" /></label><label>Duration<input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="8 weeks" /></label><label>Level<select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label></div><label>Category<input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Cloud" /></label><label>Course cover image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={changeCover} /></label><div className="field-row"><label>Lecture material file<input type="file" onChange={(e) => setMaterialFile(e.target.files?.[0] || null)} /></label><label>Video file<input type="file" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} /></label></div>{coverPreview && <div className="cover-preview"><img src={coverPreview} alt="" /><span>{coverFile ? coverFile.name : 'Current course cover'}</span></div>}<div className="form-actions"><button className="button primary" disabled={saving}>{saving ? 'Saving...' : editingId ? 'Update course' : 'Publish course'} <Icon name="arrow" /></button>{editingId && <button className="button ghost" type="button" onClick={resetForm}>Cancel edit</button>}</div></form>{editingId && <LessonManager courseId={editingId} />}<aside className="form-aside"><span className="eyebrow">PUBLISHED</span><strong>{courses.length}</strong><p>courses currently available to students.</p><Link to="/admin/upload">Upload files to S3 -&gt;</Link></aside></div><section className="content-section"><div className="section-title"><div><span className="eyebrow">COURSE LIBRARY</span><h2>Published courses</h2></div></div>{loading ? <Loading text="Loading courses..." /> : courses.length ? <div className="admin-manage-list">{courses.map((course) => <article key={course.id}><span style={{ background: course.color }}>{course.code}</span><div><strong>{course.title}</strong><small>{course.instructor} - {course.level} - {course.duration}</small><p>{course.description}</p></div><div className="course-actions"><Link className="text-button" to={`/courses/${course.id}`}>View</Link><button type="button" onClick={() => editCourse(course)}>Edit</button><button className="danger-button" type="button" onClick={() => removeCourse(course)}>Delete</button></div></article>)}</div> : <Empty title="No courses found" text="Published courses will appear here." />}</section></AppShell>
+}
+
+function LessonManager({ courseId }) {
+  const toast = useToast()
+  const emptyLesson = { lessonTitle: '', lessonDescription: '', sortOrder: '' }
+  const [lessons, setLessons] = useState([])
+  const [form, setForm] = useState(emptyLesson)
+  const [materialFile, setMaterialFile] = useState(null)
+  const [videoFile, setVideoFile] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const refresh = useCallback(() => {
+    if (!courseId) return Promise.resolve()
+    setLoading(true)
+    return api.get(`/courses/${courseId}/lessons`).then(({ data }) => setLessons(data)).finally(() => setLoading(false))
+  }, [courseId])
+  useEffect(() => { refresh() }, [refresh])
+  const reset = () => { setForm(emptyLesson); setMaterialFile(null); setVideoFile(null); setEditingId(null) }
+  const edit = (lesson) => { setEditingId(lesson.id); setForm({ lessonTitle: lesson.lessonTitle || '', lessonDescription: lesson.lessonDescription || '', sortOrder: lesson.sortOrder || '' }); setMaterialFile(null); setVideoFile(null) }
+  const submit = async (event) => {
+    event.preventDefault()
+    setSaving(true)
+    const body = new FormData()
+    Object.entries(form).forEach(([key, value]) => body.append(key, value ?? ''))
+    if (materialFile) body.append('materialFile', materialFile)
+    if (videoFile) body.append('videoFile', videoFile)
+    try {
+      if (editingId) { await api.put(`/courses/${courseId}/lessons/${editingId}`, body); toast('Lesson updated successfully.') }
+      else { await api.post(`/courses/${courseId}/lessons`, body); toast('Lesson added successfully.') }
+      reset()
+      await refresh()
+    } catch (error) { toast(error.response?.data?.message || 'Could not save lesson.', 'error') }
+    finally { setSaving(false) }
+  }
+  const remove = async (lesson) => {
+    if (!window.confirm(`Delete "${lesson.lessonTitle}"?`)) return
+    try { await api.delete(`/courses/${courseId}/lessons/${lesson.id}`); toast('Lesson deleted successfully.'); await refresh() }
+    catch (error) { toast(error.response?.data?.message || 'Could not delete lesson.', 'error') }
+  }
+  return <section className="content-section lesson-manager"><div className="section-title"><div><span className="eyebrow">COURSE LESSONS</span><h2>Build the learning path</h2></div></div><form className="panel-form" onSubmit={submit}><div className="field-row"><label>Lesson title<input value={form.lessonTitle} onChange={(e) => setForm({ ...form, lessonTitle: e.target.value })} required placeholder="e.g. Introduction to AWS" /></label><label>Sort order<input type="number" min="1" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} placeholder="1" /></label></div><label>Lesson description<textarea rows="3" value={form.lessonDescription} onChange={(e) => setForm({ ...form, lessonDescription: e.target.value })} placeholder="What will students learn?" /></label><div className="field-row"><label>Lecture note/material<input type="file" onChange={(e) => setMaterialFile(e.target.files?.[0] || null)} /></label><label>Video file<input type="file" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} /></label></div><div className="form-actions"><button className="button primary" disabled={saving}>{saving ? 'Saving...' : editingId ? 'Update lesson' : 'Add lesson'}</button>{editingId && <button className="button ghost" type="button" onClick={reset}>Cancel edit</button>}</div></form>{loading ? <Loading text="Loading lessons..." /> : lessons.length ? <div className="lesson-admin-list">{lessons.map((lesson, index) => <article key={lesson.id}><span className="lesson-number">{String(index + 1).padStart(2, '0')}</span><div><strong>{lesson.lessonTitle}</strong><p>{lesson.lessonDescription || 'No lesson description.'}</p><small>{lesson.materialUrl ? 'Material ready' : 'No material'} · {lesson.videoUrl ? 'Video ready' : 'No video'}</small></div><div className="course-actions"><button type="button" onClick={() => edit(lesson)}>Edit</button><button type="button" className="danger-button" onClick={() => remove(lesson)}>Delete</button></div></article>)}</div> : <div className="empty"><span>CL</span><h2>No lessons added yet.</h2><p>Add lessons to give students a structured learning path.</p></div>}</section>
+}
+
+function StudentAssignmentCard({ assignment, onSubmitted }) {
+  const toast = useToast()
+  const [file, setFile] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const status = assignment.status || 'Not submitted'
+  const dueTime = assignment.dueDate ? new Date(assignment.dueDate).getTime() : 0
+  const displayStatus = status === 'Not submitted' && dueTime && dueTime < Date.now() ? 'Overdue' : status === 'Not submitted' && dueTime && dueTime - Date.now() < 3 * 24 * 60 * 60 * 1000 ? 'Due soon' : status
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!file) return toast('Select a submission file.', 'error')
+    setSaving(true)
+    const body = new FormData(); body.append('submissionFile', file)
+    try { await api.post(`/assignments/${assignment.id}/submit`, body); toast('Assignment submitted successfully.'); setFile(null); onSubmitted() }
+    catch (error) { toast(error.response?.data?.message || 'Assignment submission failed.', 'error') }
+    finally { setSaving(false) }
+  }
+  return <article className="student-assignment-card"><div className="assignment-card-head"><div><span className="eyebrow">ASSIGNMENT</span><h3>{assignment.title}</h3></div><span className={`assignment-status-badge ${displayStatus.toLowerCase().replaceAll(' ', '-')}`}>{displayStatus}</span></div><p>{assignment.description || 'Complete and submit this assignment.'}</p><small className="due-date">{assignment.dueDate ? `Due ${formatDate(assignment.dueDate)}` : 'No due date'}</small><div className="assignment-links">{assignment.instructionFileUrl ? <a href={assignment.instructionFileUrl} target="_blank" rel="noreferrer">Open instructions</a> : <span>No instruction file</span>}{assignment.submission?.submissionFileUrl ? <a href={assignment.submission.submissionFileUrl} target="_blank" rel="noreferrer">View submitted file</a> : null}</div>{assignment.submission?.grade != null && <div className="grade-feedback"><strong>Grade: {assignment.submission.grade}</strong><span>{assignment.submission.feedback || 'No feedback provided.'}</span></div>}{(status === 'Not submitted' || (assignment.allowResubmission && status !== 'Graded')) && <form className="assignment-submit-form" onSubmit={submit}><input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /><button className="button primary" disabled={saving}>{saving ? 'Uploading...' : assignment.submission ? 'Resubmit' : 'Upload submission'}</button></form>}</article>
+}
+
+function AdminAssignments() {
+  const { courses, loading: coursesLoading } = useCourses()
+  const toast = useToast()
+  const [courseId, setCourseId] = useState('')
+  const [lessons, setLessons] = useState([])
+  const [assignments, setAssignments] = useState([])
+  const [selected, setSelected] = useState(null)
+  const [submissions, setSubmissions] = useState([])
+  const [form, setForm] = useState({ title: '', description: '', lessonId: '', dueDate: '', allowResubmission: true })
+  const [file, setFile] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [grades, setGrades] = useState({})
+  const refresh = useCallback(() => {
+    if (!courseId) return Promise.resolve()
+    setLoading(true)
+    return Promise.all([api.get(`/courses/${courseId}/assignments`), api.get(`/courses/${courseId}/lessons`)]).then(([assignmentsResponse, lessonsResponse]) => { setAssignments(assignmentsResponse.data); setLessons(lessonsResponse.data) }).finally(() => setLoading(false))
+  }, [courseId])
+  useEffect(() => { refresh(); setSelected(null); setSubmissions([]) }, [refresh])
+  const reset = () => { setForm({ title: '', description: '', lessonId: '', dueDate: '', allowResubmission: true }); setFile(null); setEditingId(null) }
+  const edit = (assignment) => { setEditingId(assignment.id); setForm({ title: assignment.title, description: assignment.description || '', lessonId: assignment.lessonId || '', dueDate: assignment.dueDate ? new Date(assignment.dueDate).toISOString().slice(0, 16) : '', allowResubmission: assignment.allowResubmission !== false }); setFile(null) }
+  const submit = async (event) => {
+    event.preventDefault(); setSaving(true)
+    const body = new FormData(); Object.entries(form).forEach(([key, value]) => body.append(key, value ?? '')); if (file) body.append('instructionFile', file)
+    try { if (editingId) { await api.put(`/assignments/${editingId}`, body); toast('Assignment updated successfully.') } else { await api.post(`/courses/${courseId}/assignments`, body); toast('Assignment created successfully.') }; reset(); await refresh() }
+    catch (error) { toast(error.response?.data?.message || 'Failed to upload assignment file.', 'error') } finally { setSaving(false) }
+  }
+  const remove = async (assignment) => { if (!window.confirm(`Delete "${assignment.title}"?`)) return; try { await api.delete(`/assignments/${assignment.id}`); toast('Assignment deleted successfully.'); if (selected?.id === assignment.id) { setSelected(null); setSubmissions([]) }; await refresh() } catch (error) { toast(error.response?.data?.message || 'Could not delete assignment.', 'error') } }
+  const viewSubmissions = async (assignment) => { setSelected(assignment); try { const { data } = await api.get(`/assignments/${assignment.id}/submissions`); setSubmissions(data) } catch (error) { toast('Failed to load submissions', 'error') } }
+  const saveGrade = async (submission) => { const value = grades[submission.id] || {}; try { await api.put(`/submissions/${submission.id}/grade`, value); toast('Submission graded successfully.'); await viewSubmissions(selected) } catch (error) { toast(error.response?.data?.message || 'Could not grade submission.', 'error') } }
+  return <AppShell admin><div className="page-heading compact"><div><span className="eyebrow">ASSIGNMENT MANAGEMENT</span><h1>Manage assignments.</h1><p>Create coursework, collect submissions, and grade student work.</p></div></div><div className="assignment-layout"><form className="panel-form" onSubmit={submit}><h3>{editingId ? 'Edit assignment' : 'Create assignment'}</h3><label>Course<select value={courseId} onChange={(e) => { setCourseId(e.target.value); reset() }} required><option value="">Choose a course</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.title}</option>)}</select></label><label>Lesson optional<select value={form.lessonId} onChange={(e) => setForm({ ...form, lessonId: e.target.value })}><option value="">Course-level assignment</option>{lessons.filter((lesson) => !lesson.isLegacy).map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.lessonTitle}</option>)}</select></label><label>Assignment title<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required /></label><label>Description<textarea rows="4" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label>Due date<input type="datetime-local" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={form.allowResubmission} onChange={(e) => setForm({ ...form, allowResubmission: e.target.checked })} /> Allow resubmission</label><label>Instruction file/PDF<input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label><div className="form-actions"><button className="button primary" disabled={saving || !courseId}>{saving ? 'Saving...' : editingId ? 'Update assignment' : 'Add assignment'}</button>{editingId && <button type="button" className="button ghost" onClick={reset}>Cancel edit</button>}</div></form><aside className="form-aside"><span className="eyebrow">ASSIGNMENTS</span><strong>{assignments.length}</strong><p>{courseId ? 'assignments in the selected course.' : 'Choose a course to manage assignments.'}</p></aside></div>{courseId && <section className="content-section"><div className="section-title"><div><span className="eyebrow">ASSIGNMENT LIBRARY</span><h2>{loading ? 'Loading...' : 'Course assignments'}</h2></div></div>{assignments.length ? <div className="admin-manage-list">{assignments.map((assignment) => <article key={assignment.id}><span className="assignment-status-badge">{assignment.status || 'Open'}</span><div><strong>{assignment.title}</strong><small>{assignment.dueDate ? `Due ${formatDate(assignment.dueDate)}` : 'No due date'} · {assignment.allowResubmission ? 'Resubmissions allowed' : 'Closed'}</small><p>{assignment.description}</p></div><div className="course-actions"><button type="button" onClick={() => viewSubmissions(assignment)}>Submissions</button><button type="button" onClick={() => edit(assignment)}>Edit</button><button type="button" className="danger-button" onClick={() => remove(assignment)}>Delete</button></div></article>)}</div> : <Empty title="No assignments available" text="Create the first assignment for this course." />}</section>}{selected && <section className="content-section submissions-section"><div className="section-title"><div><span className="eyebrow">SUBMISSIONS</span><h2>{selected.title}</h2></div></div>{submissions.length ? <div className="submission-list">{submissions.map((submission) => <article key={submission.id}><div><strong>{submission.studentName || submission.studentId}</strong><small>{submission.studentEmail || ''} · {formatDate(submission.submittedAt)}</small><span className={`assignment-status-badge ${submission.status?.toLowerCase()}`}>{submission.status}</span>{submission.submissionFileUrl ? <a href={submission.submissionFileUrl} target="_blank" rel="noreferrer">Open submitted file</a> : null}</div><div className="grade-fields"><input type="number" min="0" max="100" placeholder="Grade" value={grades[submission.id]?.grade ?? submission.grade ?? ''} onChange={(e) => setGrades({ ...grades, [submission.id]: { ...grades[submission.id], grade: e.target.value } })} /><textarea placeholder="Feedback" value={grades[submission.id]?.feedback ?? submission.feedback ?? ''} onChange={(e) => setGrades({ ...grades, [submission.id]: { ...grades[submission.id], feedback: e.target.value } })} /><button className="button primary" type="button" onClick={() => saveGrade(submission)}>Save grade</button></div></article>)}</div> : <Empty title="No submissions yet." text="Student submissions will appear here." />}</section>}</AppShell>
 }
 
 function AdminQuizManager() {
@@ -613,7 +755,7 @@ function AdminUpload() {
 }
 
 function AppRoutes() {
-  return <Routes><Route path="/" element={<Landing />} /><Route path="/public-courses" element={<PublicCourses />} /><Route path="/public-courses/:courseId" element={<PublicCourseDetail />} /><Route path="/explore" element={<Navigate to="/public-courses" replace />} /><Route path="/login" element={<AuthPage />} /><Route path="/register" element={<AuthPage register />} /><Route path="/dashboard" element={<Protected roles={['student']}><Dashboard /></Protected>} /><Route path="/courses" element={<Protected><Courses /></Protected>} /><Route path="/courses/:id" element={<Protected><CourseDetail /></Protected>} /><Route path="/quiz/result" element={<Protected roles={['student']}><QuizResult /></Protected>} /><Route path="/quiz/:courseId" element={<Protected roles={['student']}><Quiz /></Protected>} /><Route path="/results" element={<Protected roles={['student']}><Results /></Protected>} /><Route path="/profile" element={<Protected roles={['student']}><Profile /></Protected>} /><Route path="/profile/settings" element={<Protected roles={['student']}><ProfileSettings /></Protected>} /><Route path="/admin" element={<Protected roles={['admin', 'lecturer']}><AdminDashboard /></Protected>} /><Route path="/admin/courses" element={<Protected roles={['admin', 'lecturer']}><AdminCourseManager /></Protected>} /><Route path="/admin/quizzes" element={<Protected roles={['admin', 'lecturer']}><AdminQuizManager /></Protected>} /><Route path="/admin/students" element={<Protected roles={['admin', 'lecturer']}><AdminStudents /></Protected>} /><Route path="/admin/results" element={<Protected roles={['admin', 'lecturer']}><AdminResults /></Protected>} /><Route path="/admin/upload" element={<Protected roles={['admin', 'lecturer']}><AdminUpload /></Protected>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes>
+  return <Routes><Route path="/" element={<Landing />} /><Route path="/public-courses" element={<PublicCourses />} /><Route path="/public-courses/:courseId" element={<PublicCourseDetail />} /><Route path="/explore" element={<Navigate to="/public-courses" replace />} /><Route path="/login" element={<AuthPage />} /><Route path="/register" element={<AuthPage register />} /><Route path="/dashboard" element={<Protected roles={['student']}><Dashboard /></Protected>} /><Route path="/courses" element={<Protected><Courses /></Protected>} /><Route path="/courses/:id" element={<Protected><CourseDetail /></Protected>} /><Route path="/quiz/result" element={<Protected roles={['student']}><QuizResult /></Protected>} /><Route path="/quiz/:courseId" element={<Protected roles={['student']}><Quiz /></Protected>} /><Route path="/results" element={<Protected roles={['student']}><Results /></Protected>} /><Route path="/profile" element={<Protected roles={['student']}><Profile /></Protected>} /><Route path="/profile/settings" element={<Protected roles={['student']}><ProfileSettings /></Protected>} /><Route path="/admin" element={<Protected roles={['admin', 'lecturer']}><AdminDashboard /></Protected>} /><Route path="/admin/courses" element={<Protected roles={['admin', 'lecturer']}><AdminCourseManager /></Protected>} /> <Route path="/admin/assignments" element={<Protected roles={['admin', 'lecturer']}><AdminAssignments /></Protected>} /><Route path="/admin/quizzes" element={<Protected roles={['admin', 'lecturer']}><AdminQuizManager /></Protected>} /><Route path="/admin/students" element={<Protected roles={['admin', 'lecturer']}><AdminStudents /></Protected>} /><Route path="/admin/results" element={<Protected roles={['admin', 'lecturer']}><AdminResults /></Protected>} /><Route path="/admin/upload" element={<Protected roles={['admin', 'lecturer']}><AdminUpload /></Protected>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes>
 }
 
 export default function App() {

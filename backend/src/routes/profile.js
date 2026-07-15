@@ -1,30 +1,14 @@
 import { Router } from 'express'
 import multer from 'multer'
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
-import { randomUUID } from 'node:crypto'
-import { changePassword, getProfile, updateAvatar, updateProfile } from '../config/db.js'
+import { changePassword, createNotification, getProfile, updateAvatar, updateProfile } from '../config/db.js'
 import { authenticate } from '../middleware/auth.js'
+import { uploadPrivateFile } from '../services/s3.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
 function canAccessProfile(req, userId) {
   return req.user.id === userId || ['admin', 'lecturer'].includes(req.user.role)
-}
-
-function hasUsableS3Config() {
-  const values = [process.env.AWS_REGION, process.env.AWS_S3_BUCKET]
-  return values.every((value) => value && !/placeholder|example|your-|change-me/i.test(value))
-}
-
-async function uploadAvatarToS3(file) {
-  if (!hasUsableS3Config()) return null
-  const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '-')
-  const key = `profile-images/${randomUUID()}-${safeName}`
-  const client = new S3Client({ region: process.env.AWS_REGION })
-  await client.send(new PutObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: key, Body: file.buffer, ContentType: file.mimetype }))
-  const encodedKey = key.split('/').map(encodeURIComponent).join('/')
-  return `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${encodedKey}`
 }
 
 router.get('/:userId', authenticate, async (req, res) => {
@@ -39,6 +23,7 @@ router.put('/:userId', authenticate, async (req, res) => {
   const updated = await updateProfile(req.params.userId, req.body)
   if (!updated) return res.status(400).json({ message: 'Name and email are required.' })
   if (updated.conflict) return res.status(409).json({ message: 'An account with that email already exists.' })
+  await createNotification({ userId: req.params.userId, role: req.user.role, type: 'profile', title: 'Profile updated', message: 'Your profile has been updated.' })
   res.json({ message: 'Profile updated successfully.', user: updated })
 })
 
@@ -54,19 +39,18 @@ router.put('/:userId/password', authenticate, async (req, res) => {
 router.post('/:userId/avatar', authenticate, upload.single('avatar'), async (req, res) => {
   if (!canAccessProfile(req, req.params.userId)) return res.status(403).json({ message: 'You can only update your own avatar.' })
 
-  let url = '/icons.svg'
+  let key = null
   if (req.file) {
     try {
-      url = await uploadAvatarToS3(req.file) || `/icons.svg?avatar=${encodeURIComponent(req.file.originalname)}`
+      key = await uploadPrivateFile(req.file, 'profile-images')
     } catch (error) {
       console.warn(`Avatar upload fallback used: ${error.message}`)
-      url = `/icons.svg?avatar=${encodeURIComponent(req.file.originalname)}`
     }
   }
 
-  const user = await updateAvatar(req.params.userId, url)
+  const user = await updateAvatar(req.params.userId, key)
   if (!user) return res.status(404).json({ message: 'Profile not found.' })
-  res.status(201).json({ message: 'Profile picture updated successfully.', url, user })
+  res.status(201).json({ message: 'Profile picture updated successfully.', url: user.profileImageUrl || '', user })
 })
 
 export default router

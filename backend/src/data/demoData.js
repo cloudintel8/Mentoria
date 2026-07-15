@@ -73,6 +73,23 @@ export const demoCourses = [
   },
 ]
 
+export const demoLessons = [
+  { id: 'lesson-cloud-101-1', courseId: 'course-cloud-101', lessonTitle: 'Introduction to Cloud Computing', lessonDescription: 'Understand the foundations of cloud computing and why organizations adopt it.', materialFileKey: '', videoFileKey: '', sortOrder: 1 },
+  { id: 'lesson-cloud-101-2', courseId: 'course-cloud-101', lessonTitle: 'Cloud Service Models', lessonDescription: 'Compare IaaS, PaaS, SaaS, and the shared responsibility model.', materialFileKey: '', videoFileKey: '', sortOrder: 2 },
+  { id: 'lesson-cloud-101-3', courseId: 'course-cloud-101', lessonTitle: 'Cloud Deployment Models', lessonDescription: 'Explore public, private, hybrid, and multi-cloud deployments.', materialFileKey: '', videoFileKey: '', sortOrder: 3 },
+  { id: 'lesson-aws-201-1', courseId: 'course-aws-201', lessonTitle: 'AWS Global Infrastructure', lessonDescription: 'Learn about Regions, Availability Zones, and resilient architectures.', materialFileKey: '', videoFileKey: '', sortOrder: 1 },
+  { id: 'lesson-aws-201-2', courseId: 'course-aws-201', lessonTitle: 'Compute and Networking', lessonDescription: 'Build a foundation with EC2, VPC, and load balancing.', materialFileKey: '', videoFileKey: '', sortOrder: 2 },
+  { id: 'lesson-devops-301-1', courseId: 'course-devops-301', lessonTitle: 'Continuous Integration', lessonDescription: 'Automate builds and tests with a reliable CI workflow.', materialFileKey: '', videoFileKey: '', sortOrder: 1 },
+  { id: 'lesson-devops-301-2', courseId: 'course-devops-301', lessonTitle: 'Continuous Delivery', lessonDescription: 'Move changes safely through repeatable deployment pipelines.', materialFileKey: '', videoFileKey: '', sortOrder: 2 },
+  { id: 'lesson-security-101-1', courseId: 'course-security-101', lessonTitle: 'Identity and Access', lessonDescription: 'Apply least privilege and strong identity controls in the cloud.', materialFileKey: '', videoFileKey: '', sortOrder: 1 },
+  { id: 'lesson-security-101-2', courseId: 'course-security-101', lessonTitle: 'Encryption and Monitoring', lessonDescription: 'Protect data and detect security events with practical controls.', materialFileKey: '', videoFileKey: '', sortOrder: 2 },
+]
+
+export const demoAssignments = [
+  { id: 'assignment-cloud-101-1', courseId: 'course-cloud-101', lessonId: 'lesson-cloud-101-2', title: 'Cloud Service Models Worksheet', description: 'Compare IaaS, PaaS, and SaaS using a real-world workload.', instructionFileKey: '', dueDate: '2026-08-20T23:59:00.000Z', allowResubmission: true, createdBy: 'admin-001' },
+  { id: 'assignment-aws-201-1', courseId: 'course-aws-201', lessonId: 'lesson-aws-201-2', title: 'Design a Resilient VPC', description: 'Submit a short architecture plan for a highly available VPC.', instructionFileKey: '', dueDate: '2026-08-25T23:59:00.000Z', allowResubmission: true, createdBy: 'lecturer-001' },
+]
+
 export const demoResults = [
   {
     id: 'result-demo-001',

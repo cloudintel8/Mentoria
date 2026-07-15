@@ -108,6 +108,17 @@ Base URL: `http://localhost:5000/api`
 | PUT | `/profile/:userId/password` | Owner | Change password |
 | POST | `/profile/:userId/avatar` | Owner/Admin/Lecturer | Upload or fallback profile picture |
 | POST | `/upload` | Authenticated | Upload one file to S3 |
+| GET | `/courses/:courseId/lessons` | Public | List course lessons with presigned resource URLs |
+| POST | `/courses/:courseId/lessons` | Admin/Lecturer | Add a lesson and optional material/video files |
+| PUT | `/courses/:courseId/lessons/:lessonId` | Admin/Lecturer | Update a lesson and optional files |
+| DELETE | `/courses/:courseId/lessons/:lessonId` | Admin/Lecturer | Delete a lesson |
+| GET | `/courses/:courseId/assignments` | Authenticated | List course assignments and student status |
+| POST | `/courses/:courseId/assignments` | Admin/Lecturer | Create an assignment with optional instructions |
+| PUT/DELETE | `/assignments/:assignmentId` | Admin/Lecturer | Edit or delete an assignment |
+| POST | `/assignments/:assignmentId/submit` | Student | Upload or resubmit assignment work |
+| GET | `/assignments/:assignmentId/submissions` | Admin/Lecturer | View submissions |
+| PUT | `/submissions/:submissionId/grade` | Admin/Lecturer | Grade and give feedback |
+| GET | `/notifications/:userId` | Owner | List notifications |
 
 Send protected requests with `Authorization: Bearer <token>`.
 
@@ -128,7 +139,11 @@ Send protected requests with `Authorization: Bearer <token>`.
 }
 ```
 
-Course create/edit also accepts `multipart/form-data` with an optional `coverImage` file. Cover images are uploaded to `courses/covers/` in S3 when credentials are available, with a safe demo fallback when they are not.
+Course create/edit accepts `multipart/form-data` files named `coverImage`, `materialFile`, and `videoFile`. They are stored privately under `courses/covers/`, `courses/`, and `videos/`; responses expose one-hour presigned `coverImageUrl`, `materialUrl`, and `videoUrl` values.
+
+Lessons use `lessonTitle`, `lessonDescription`, `sortOrder`, `materialFile`, and `videoFile`. Lesson material files use `courses/materials/`; lesson videos use `videos/`.
+
+Assignments use private `assignments/instructions/` and `assignments/submissions/` S3 prefixes. Assignment and submission records store only object keys; the API supplies one-hour presigned instruction/submission URLs.
 
 ### Quiz submission body
 
@@ -148,7 +163,7 @@ Send `multipart/form-data` with:
 - `file`: the uploaded file (maximum 100 MB)
 - `folder`: one of `assignments`, `courses`, `videos`, `profile-images`, or `temporary`
 
-Students may upload only to `assignments/`, `profile-images/`, and `temporary/`. Admins and lecturers may use all folders. S3 objects are private unless the bucket policy says otherwise; the returned URL does not itself grant access.
+Students may upload only to `assignments/`, `profile-images/`, and `temporary/`. Admins and lecturers may use all folders. S3 objects remain private; the API returns presigned GET URLs that expire after one hour.
 
 ## Suggested S3 CORS configuration
 
@@ -157,5 +172,5 @@ Direct browser access to public objects may require bucket CORS. The current upl
 ## Important demo notes
 
 - The backend now stores users, courses, quizzes, and results in MySQL instead of memory, so data persists across restarts.
-- For production, add refresh tokens, rate limiting, stricter file type validation, malware scanning, private objects with presigned download URLs, and an IAM role instead of long-lived keys.
-- The sample course links illustrate S3 paths. Upload real files through the admin screen and paste the returned object URLs when creating courses.
+- For production, add refresh tokens, rate limiting, stricter file type validation, malware scanning, and an IAM role instead of long-lived keys.
+- Database records store object keys (`profile_image_key`, `cover_image_key`, `material_file_key`, and `video_file_key`), never public S3 URLs.

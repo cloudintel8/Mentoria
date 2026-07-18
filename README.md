@@ -46,7 +46,8 @@ Edit `backend/.env` before starting:
 
 ```env
 PORT=5000
-CLIENT_URL=http://localhost:5173
+# Comma-separated frontend origins allowed to call this API.
+CLIENT_URL=http://localhost:5173,http://localhost:3000,http://13.212.31.209:3000
 JWT_SECRET=replace-with-a-long-random-string
 DB_HOST=your-rds-endpoint.ap-southeast-1.rds.amazonaws.com
 DB_PORT=3306

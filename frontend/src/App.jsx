@@ -34,7 +34,9 @@ function Icon({ name, size = 20 }) {
 function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const showToast = useCallback((message, type = 'success') => {
-    const id = crypto.randomUUID()
+    const id = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
     setToasts((items) => [...items, { id, message, type }])
     setTimeout(() => setToasts((items) => items.filter((item) => item.id !== id)), 3500)
   }, [])

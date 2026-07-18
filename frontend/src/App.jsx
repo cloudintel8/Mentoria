@@ -179,6 +179,7 @@ function AuthPage({ register = false }) {
       const studentTarget = register && selectedCourseId ? `/courses/${encodeURIComponent(selectedCourseId)}` : '/dashboard'
       navigate(data.user.role === 'student' ? studentTarget : '/admin')
     } catch (err) {
+      console.error('Login error caught in AuthPage:', err)
       const message = err.response?.data?.message || 'Failed to connect to server.'
       setError(message)
       toast(message, 'error')
